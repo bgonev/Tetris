@@ -1,0 +1,2 @@
+include cfg/build_config.mk
+include $(CPCT_PATH)/cfg/global_main_makefile.mk

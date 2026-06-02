@@ -1,0 +1,162 @@
+param(
+    [string]$SourcePath
+)
+
+$ErrorActionPreference = "Stop"
+
+$Root = Resolve-Path (Join-Path $PSScriptRoot "..")
+if (-not $SourcePath) {
+    $SourcePath = Join-Path $Root.Path "assets\splash_source.png"
+}
+
+$SourcePath = (Resolve-Path $SourcePath).Path
+$PreviewPath = Join-Path $Root.Path "assets\splash_mode0_preview.png"
+$AsmPath = Join-Path $Root.Path "src\splash.s"
+$HeaderPath = Join-Path $Root.Path "src\splash.h"
+
+Add-Type -AssemblyName System.Drawing
+
+$width = 160
+$height = 200
+$displayWidth = 320
+$mode0WidthBytes = 80
+$targetDisplayAspect = [double]$displayWidth / [double]$height
+
+$palette = @(
+    @(0, 0, 0),       # 0 HW_BLACK
+    @(0, 255, 255),   # 1 HW_BRIGHT_CYAN
+    @(255, 255, 0),   # 2 HW_BRIGHT_YELLOW
+    @(0, 0, 255),     # 3 HW_BRIGHT_BLUE
+    @(255, 128, 0),   # 4 HW_ORANGE
+    @(0, 255, 0),     # 5 HW_BRIGHT_GREEN
+    @(255, 0, 0),     # 6 HW_BRIGHT_RED
+    @(255, 0, 255),   # 7 HW_MAGENTA
+    @(160, 160, 160), # 8 HW_WHITE
+    @(255, 255, 255), # 9 HW_BRIGHT_WHITE
+    @(0, 128, 255),   # 10 HW_SKY_BLUE
+    @(128, 255, 128), # 11 HW_PASTEL_GREEN
+    @(255, 128, 128), # 12 HW_PINK
+    @(192, 192, 0),   # 13 HW_YELLOW
+    @(0, 160, 128),   # 14 HW_SEA_GREEN
+    @(128, 128, 255)  # 15 HW_MAUVE
+)
+
+$mode0Table = @(0x00, 0x40, 0x04, 0x44, 0x10, 0x50, 0x14, 0x54, 0x01, 0x41, 0x05, 0x45, 0x11, 0x51, 0x15, 0x55)
+
+function Get-NearestPaletteIndex {
+    param(
+        [Parameter(Mandatory = $true)][System.Drawing.Color]$Color,
+        [Parameter(Mandatory = $true)][object[]]$Palette
+    )
+
+    $bestIndex = 0
+    $bestDistance = [double]::MaxValue
+    for ($i = 0; $i -lt $Palette.Length; $i++) {
+        $entry = $Palette[$i]
+        $dr = [double]$Color.R - [double]$entry[0]
+        $dg = [double]$Color.G - [double]$entry[1]
+        $db = [double]$Color.B - [double]$entry[2]
+        $distance = 0.30 * $dr * $dr + 0.59 * $dg * $dg + 0.11 * $db * $db
+        if ($distance -lt $bestDistance) {
+            $bestDistance = $distance
+            $bestIndex = $i
+        }
+    }
+    return $bestIndex
+}
+
+New-Item -ItemType Directory -Force -Path (Join-Path $Root.Path "assets") | Out-Null
+
+$source = [System.Drawing.Image]::FromFile($SourcePath)
+$scaled = New-Object System.Drawing.Bitmap $width, $height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+$graphics = [System.Drawing.Graphics]::FromImage($scaled)
+$graphics.Clear([System.Drawing.Color]::Black)
+$graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+$graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+$graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
+
+$sourceAspect = [double]$source.Width / [double]$source.Height
+if ($sourceAspect -gt $targetDisplayAspect) {
+    $cropHeight = $source.Height
+    $cropWidth = [int]([double]$cropHeight * $targetDisplayAspect)
+    $cropX = [int](($source.Width - $cropWidth) / 2)
+    $cropY = 0
+} else {
+    $cropWidth = $source.Width
+    $cropHeight = [int]([double]$cropWidth / $targetDisplayAspect)
+    $cropX = 0
+    $cropY = [int](($source.Height - $cropHeight) / 2)
+}
+$srcRect = New-Object System.Drawing.Rectangle $cropX, $cropY, $cropWidth, $cropHeight
+$dstRect = New-Object System.Drawing.Rectangle 0, 0, $width, $height
+$graphics.DrawImage($source, $dstRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
+$graphics.Dispose()
+$source.Dispose()
+
+$indexes = New-Object byte[] ($width * $height)
+$preview = New-Object System.Drawing.Bitmap $width, $height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+
+for ($y = 0; $y -lt $height; $y++) {
+    for ($x = 0; $x -lt $width; $x++) {
+        $colour = $scaled.GetPixel($x, $y)
+        $idx = Get-NearestPaletteIndex $colour $palette
+        $indexes[$y * $width + $x] = [byte]$idx
+        $pal = $palette[$idx]
+        $preview.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($pal[0], $pal[1], $pal[2]))
+    }
+}
+$scaled.Dispose()
+$displayPreview = New-Object System.Drawing.Bitmap $displayWidth, $height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+$displayGraphics = [System.Drawing.Graphics]::FromImage($displayPreview)
+$displayGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+$displayGraphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+$displayGraphics.DrawImage($preview, 0, 0, $displayWidth, $height)
+$displayGraphics.Dispose()
+$displayPreview.Save($PreviewPath, [System.Drawing.Imaging.ImageFormat]::Png)
+$displayPreview.Dispose()
+$preview.Dispose()
+
+$bytes = New-Object byte[] ($mode0WidthBytes * $height)
+for ($y = 0; $y -lt $height; $y++) {
+    for ($x = 0; $x -lt $mode0WidthBytes; $x++) {
+        $left = $indexes[$y * $width + $x * 2]
+        $right = $indexes[$y * $width + $x * 2 + 1]
+        $bytes[$y * $mode0WidthBytes + $x] = [byte]((($mode0Table[$left] -shl 1) -bor $mode0Table[$right]) -band 0xFF)
+    }
+}
+
+$asm = New-Object System.Text.StringBuilder
+[void]$asm.AppendLine("; Generated by tools/generate_splash_assets.ps1")
+[void]$asm.AppendLine("; Source: assets/splash_source.png")
+[void]$asm.AppendLine()
+[void]$asm.AppendLine(".area _CODE")
+[void]$asm.AppendLine()
+[void]$asm.AppendLine(".globl _splash_img")
+[void]$asm.AppendLine("_splash_img::")
+for ($i = 0; $i -lt $bytes.Length; $i += 16) {
+    $count = [Math]::Min(16, $bytes.Length - $i)
+    $lineBytes = for ($j = 0; $j -lt $count; $j++) {
+        "0x{0:X2}" -f $bytes[$i + $j]
+    }
+    [void]$asm.AppendLine("   .db " + ($lineBytes -join ","))
+}
+[System.IO.File]::WriteAllText($AsmPath, $asm.ToString(), [System.Text.Encoding]::ASCII)
+
+$header = @"
+#ifndef TETRIS_SPLASH_H
+#define TETRIS_SPLASH_H
+
+#include <cpctelera.h>
+
+#define SPLASH_W_BYTES 80
+#define SPLASH_HEIGHT 200
+
+extern const u8 splash_img[SPLASH_W_BYTES * SPLASH_HEIGHT];
+
+#endif
+"@
+[System.IO.File]::WriteAllText($HeaderPath, $header, [System.Text.Encoding]::ASCII)
+
+Write-Host "Generated $AsmPath"
+Write-Host "Generated $HeaderPath"
+Write-Host "Generated $PreviewPath"
