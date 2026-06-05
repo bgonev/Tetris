@@ -4,12 +4,18 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $LocalBash = Join-Path $Root.Path "toolchains\cygwin64\bin\bash.exe"
 $SharedCpct = Join-Path $Root.Path "..\cpctelera"
 $LegacyLocalCpct = Join-Path $Root.Path ".cpctelera-ref\cpctelera"
+$PayloadFileName = "GAME.DAT"
+$LegacyDist = "dist\nonoverlay"
 
 function Convert-ToCygwinPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    $resolved = Resolve-Path $Path
-    $unixPath = $resolved.Path.Replace("\", "/")
+    $fullPath = if (Test-Path $Path) {
+        (Resolve-Path $Path).Path
+    } else {
+        [System.IO.Path]::GetFullPath($Path)
+    }
+    $unixPath = $fullPath.Replace("\", "/")
     if ($unixPath -match "^([A-Za-z]):/(.*)$") {
         return "/cygdrive/$($matches[1].ToLower())/$($matches[2])"
     }
@@ -101,13 +107,146 @@ function Write-AmsdosBinary {
     [System.IO.File]::WriteAllBytes($OutputPath, $output)
 }
 
+function Format-CpcHex {
+    param([Parameter(Mandatory = $true)][int]$Value)
+
+    return ("&{0:X4}" -f $Value)
+}
+
+function Write-BasicLoader {
+    param(
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [Parameter(Mandatory = $true)][int]$MemoryTop,
+        [Parameter(Mandatory = $true)][int]$LoadAddress,
+        [Parameter(Mandatory = $true)][int]$RunAddress
+    )
+
+    $lines = @(
+        '10 OPENOUT "D"',
+        ("20 MEMORY {0}" -f (Format-CpcHex $MemoryTop)),
+        '30 CLOSEOUT',
+        ('40 LOAD "{0}",{1}' -f $PayloadFileName, (Format-CpcHex $LoadAddress)),
+        ("50 CALL {0}" -f (Format-CpcHex $RunAddress))
+    )
+    $text = ($lines -join "`r`n") + "`r`n" + [char]0x1A
+    [System.IO.File]::WriteAllBytes($OutputPath, [System.Text.Encoding]::ASCII.GetBytes($text))
+}
+
+function Add-AsciiFileToDsk {
+    param(
+        [Parameter(Mandatory = $true)][string]$DskPath,
+        [Parameter(Mandatory = $true)][string]$InputPath,
+        [Parameter(Mandatory = $true)][string]$CpctPath
+    )
+
+    if (Test-Path $LocalBash) {
+        $cygCpct = Convert-ToCygwinPath $CpctPath
+        $cygDsk = Convert-ToCygwinPath $DskPath
+        $cygInput = Convert-ToCygwinPath $InputPath
+        $cmd = "export PATH='$cygCpct/tools/iDSK-0.13/bin':`$PATH && iDSK '$cygDsk' -i '$cygInput' -t 0 -f"
+        & $LocalBash -lc $cmd
+    } else {
+        $idsk = Join-Path $CpctPath "tools\iDSK-0.13\bin\iDSK.exe"
+        if (-not (Test-Path $idsk)) {
+            throw "Could not find iDSK at $idsk."
+        }
+        & $idsk $DskPath -i $InputPath -t 0 -f
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not add BASIC loader to $DskPath."
+    }
+}
+
+function New-NoBasicDsk {
+    param(
+        [Parameter(Mandatory = $true)][string]$DskPath,
+        [Parameter(Mandatory = $true)][string]$LauncherPath,
+        [Parameter(Mandatory = $true)][string]$PayloadPath,
+        [Parameter(Mandatory = $true)][int]$PayloadLoadAddress,
+        [Parameter(Mandatory = $true)][int]$PayloadRunAddress,
+        [Parameter(Mandatory = $true)][string]$CpctPath
+    )
+
+    $load = "{0:X4}" -f $PayloadLoadAddress
+    $run = "{0:X4}" -f $PayloadRunAddress
+
+    Remove-Item -Force -ErrorAction SilentlyContinue $DskPath
+
+    if (Test-Path $LocalBash) {
+        $cygCpct = Convert-ToCygwinPath $CpctPath
+        $cygDsk = Convert-ToCygwinPath $DskPath
+        $cygLauncher = Convert-ToCygwinPath $LauncherPath
+        $cygPayload = Convert-ToCygwinPath $PayloadPath
+        $cmd = "export PATH='$cygCpct/tools/iDSK-0.13/bin':`$PATH && iDSK '$cygDsk' -n && iDSK '$cygDsk' -i '$cygLauncher' -t 0 -f && iDSK '$cygDsk' -i '$cygPayload' -e $run -c $load -t 1 -f"
+        & $LocalBash -lc $cmd
+    } else {
+        $idsk = Join-Path $CpctPath "tools\iDSK-0.13\bin\iDSK.exe"
+        if (-not (Test-Path $idsk)) {
+            throw "Could not find iDSK at $idsk."
+        }
+
+        & $idsk $DskPath -n
+        if ($LASTEXITCODE -ne 0) { throw "Release DSK creation failed with exit code $LASTEXITCODE." }
+        & $idsk $DskPath -i $LauncherPath -t 0 -f
+        if ($LASTEXITCODE -ne 0) { throw "Could not add TETRIS.BIN launcher to release DSK." }
+        & $idsk $DskPath -i $PayloadPath -e $run -c $load -t 1 -f
+        if ($LASTEXITCODE -ne 0) { throw "Could not add $PayloadFileName payload to release DSK." }
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not create no-BASIC release DSK."
+    }
+}
+
+function New-NoBasicCdt {
+    param(
+        [Parameter(Mandatory = $true)][string]$CdtPath,
+        [Parameter(Mandatory = $true)][string]$LauncherPath,
+        [Parameter(Mandatory = $true)][string]$PayloadRawPath,
+        [Parameter(Mandatory = $true)][int]$PayloadLoadAddress,
+        [Parameter(Mandatory = $true)][int]$PayloadRunAddress,
+        [Parameter(Mandatory = $true)][string]$CpctPath
+    )
+
+    $load = "0x{0:X4}" -f $PayloadLoadAddress
+    $run = "0x{0:X4}" -f $PayloadRunAddress
+
+    Remove-Item -Force -ErrorAction SilentlyContinue $CdtPath
+
+    if (Test-Path $LocalBash) {
+        $cygCpct = Convert-ToCygwinPath $CpctPath
+        $cygCdt = Convert-ToCygwinPath $CdtPath
+        $cygLauncher = Convert-ToCygwinPath $LauncherPath
+        $cygPayload = Convert-ToCygwinPath $PayloadRawPath
+        $cmd = "export PATH='$cygCpct/tools/2cdt/bin':`$PATH && 2cdt -n . '$cygCdt' > /dev/null && 2cdt -F 0 '$cygLauncher' -r TETRIS.BIN '$cygCdt' > /dev/null && 2cdt -X $run -L $load -r $PayloadFileName '$cygPayload' '$cygCdt' > /dev/null"
+        & $LocalBash -lc $cmd
+    } else {
+        $twocdt = Join-Path $CpctPath "tools\2cdt\bin\2cdt.exe"
+        if (-not (Test-Path $twocdt)) {
+            throw "Could not find 2cdt at $twocdt."
+        }
+
+        & $twocdt -n . $CdtPath
+        if ($LASTEXITCODE -ne 0) { throw "Release CDT creation failed with exit code $LASTEXITCODE." }
+        & $twocdt -F 0 $LauncherPath -r TETRIS.BIN $CdtPath
+        if ($LASTEXITCODE -ne 0) { throw "Could not add TETRIS.BIN launcher to release CDT." }
+        & $twocdt -X $run -L $load -r $PayloadFileName $PayloadRawPath $CdtPath
+        if ($LASTEXITCODE -ne 0) { throw "Could not add $PayloadFileName payload to release CDT." }
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not create no-BASIC release CDT."
+    }
+}
+
 Push-Location $Root
 try {
     $CpctPath = Get-CpctPath
     if ((Test-Path $LocalBash) -and $CpctPath) {
         $cygRoot = Convert-ToCygwinPath $Root.Path
         $cygCpct = Convert-ToCygwinPath $CpctPath
-        $cmd = "cd '$cygRoot' && export CPCT_PATH='$cygCpct' && export PATH='$cygCpct/tools/sdcc-3.6.8-r9946/bin:$cygCpct/tools/iDSK-0.13/bin:$cygCpct/tools/hex2bin-2.0/bin:$cygCpct/tools/2cdt/bin:$cygCpct/tools/dskgen/bin':`$PATH && make"
+        $cmd = "cd '$cygRoot' && export CPCT_PATH='$cygCpct' && export PATH='$cygCpct/tools/sdcc-3.6.8-r9946/bin:$cygCpct/tools/iDSK-0.13/bin:$cygCpct/tools/hex2bin-2.0/bin:$cygCpct/tools/2cdt/bin:$cygCpct/tools/dskgen/bin':`$PATH && make clean && make"
         & $LocalBash -lc $cmd
         if ($LASTEXITCODE -ne 0) {
             throw "CPCtelera make failed with exit code $LASTEXITCODE."
@@ -117,27 +256,54 @@ try {
         if (-not $make) {
             throw "CPCtelera native build requires Cygwin, make, and CPCT_PATH. Local toolchain not found under $($Root.Path)\toolchains and no shared CPCtelera path was found."
         }
+        make clean
+        if ($LASTEXITCODE -ne 0) {
+            throw "CPCtelera make clean failed with exit code $LASTEXITCODE."
+        }
         make
+        if ($LASTEXITCODE -ne 0) {
+            throw "CPCtelera make failed with exit code $LASTEXITCODE."
+        }
     }
 
-    New-Item -ItemType Directory -Force -Path "dist" | Out-Null
-    Remove-Item -Force -ErrorAction SilentlyContinue "dist\TETRIS.map"
+    New-Item -ItemType Directory -Force -Path $LegacyDist | Out-Null
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LegacyDist "TETRIS.map")
+    Remove-Item -Force -ErrorAction SilentlyContinue "obj\TETRIS.BAS", (Join-Path $LegacyDist "TETRIS.BAS")
+    Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LegacyDist "GAME.BIN"), (Join-Path $LegacyDist "GAME.DAT")
+
     $loadAddress = Read-HexAddressFromLog "obj\binaryAddresses.log" "Load Address"
     $runAddress = Read-HexAddressFromLog "obj\binaryAddresses.log" "Run\s+Address"
     $highestAddress = Read-HexAddressFromLog "obj\TETRIS.bin.log" "Highest address"
+    $loaderMemoryTop = $loadAddress - 1
     $safeAmsdosTop = 0xA67B
     if ($highestAddress -ge $safeAmsdosTop) {
-        throw ("Built binary reaches 0x{0:X4}, which can overwrite CPC AMSDOS/BASIC high memory. Keep it below 0x{1:X4} for direct RUN compatibility." -f $highestAddress, $safeAmsdosTop)
+        throw ("Built binary reaches 0x{0:X4}, which can overwrite CPC AMSDOS/BASIC high memory. Keep it below 0x{1:X4} for loader compatibility." -f $highestAddress, $safeAmsdosTop)
     }
-    Write-AmsdosBinary "obj\TETRIS.bin" "dist\TETRIS.BIN" $loadAddress $runAddress "TETRIS.BIN"
-    Copy-Item -Force "TETRIS.cdt" "dist\TETRIS.CDT"
+
+    New-Item -ItemType Directory -Force -Path "obj\launcher" | Out-Null
+    New-Item -ItemType Directory -Force -Path "obj\release" | Out-Null
+    Write-BasicLoader "obj\launcher\TETRIS.BIN" $loaderMemoryTop $loadAddress $runAddress
+    Copy-Item -Force "obj\TETRIS.bin" "obj\release\$PayloadFileName"
+    Write-AmsdosBinary "obj\TETRIS.bin" (Join-Path $LegacyDist $PayloadFileName) $loadAddress $runAddress $PayloadFileName
+    Copy-Item -Force "obj\launcher\TETRIS.BIN" (Join-Path $LegacyDist "TETRIS.BIN")
+    New-NoBasicDsk "TETRIS.dsk" "obj\launcher\TETRIS.BIN" "obj\release\$PayloadFileName" $loadAddress $runAddress $CpctPath
+    New-NoBasicCdt "TETRIS.cdt" "obj\launcher\TETRIS.BIN" "obj\TETRIS.bin" $loadAddress $runAddress $CpctPath
+    Copy-Item -Force "TETRIS.cdt" (Join-Path $LegacyDist "TETRIS.CDT")
+    $releaseDskPath = Join-Path $LegacyDist "TETRIS.DSK"
     try {
-        Copy-Item -Force "TETRIS.dsk" "dist\TETRIS.DSK"
+        Copy-Item -Force "TETRIS.dsk" $releaseDskPath
     } catch {
-        $fallbackDsk = "dist\TETRIS-UPDATED.DSK"
+        $fallbackDsk = Join-Path $LegacyDist "TETRIS-UPDATED.DSK"
         Copy-Item -Force "TETRIS.dsk" $fallbackDsk
-        Write-Warning "Could not overwrite dist\TETRIS.DSK, probably because an emulator has it open. Wrote $fallbackDsk instead."
+        $releaseDskPath = $fallbackDsk
+        Write-Warning "Could not overwrite $releaseDskPath, probably because an emulator has it open. Wrote $fallbackDsk instead."
     }
+    Copy-Item -Force (Join-Path $LegacyDist "TETRIS.BIN") (Join-Path $LegacyDist "TETRIS-nonoverlay.BIN")
+    Copy-Item -Force (Join-Path $LegacyDist $PayloadFileName) (Join-Path $LegacyDist "GAME-nonoverlay.DAT")
+    Copy-Item -Force (Join-Path $LegacyDist "TETRIS.CDT") (Join-Path $LegacyDist "TETRIS-nonoverlay.CDT")
+    Copy-Item -Force $releaseDskPath (Join-Path $LegacyDist "TETRIS-nonoverlay.DSK")
+    Write-Host ("Launcher MEMORY top: 0x{0:X4}; payload: {1}; code load: 0x{2:X4}; run: 0x{3:X4}; highest: 0x{4:X4}; safe top: 0x{5:X4}" -f $loaderMemoryTop, $PayloadFileName, $loadAddress, $runAddress, $highestAddress, $safeAmsdosTop)
+    Write-Host ("Non-overlay outputs: {0}" -f (Resolve-Path $LegacyDist))
 } finally {
     Pop-Location
 }

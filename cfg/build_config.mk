@@ -5,7 +5,7 @@ $(error CPCT_PATH is not set. Install CPCtelera, run setup.sh, and build from a 
 endif
 
 PROJNAME   := TETRIS
-Z80CODELOC := 0x4000
+Z80CODELOC := 0x1000
 
 SRCDIR      := src
 DSKFILESDIR := dsk_files
@@ -29,6 +29,12 @@ OBJS2CLEAN :=
 include $(CPCT_PATH)/cfg/global_paths.mk
 
 Z80CCFLAGS    :=
+ifeq ($(OVERLAY_SPLASH),1)
+Z80CCFLAGS    += -DOVERLAY_SPLASH=1
+endif
+ifeq ($(MENU_CODE_OVERLAY),1)
+Z80CCFLAGS    += -DMENU_CODE_OVERLAY=1
+endif
 Z80ASMFLAGS   := -l -o -s
 Z80CCINCLUDE  := -I$(CPCT_SRC) -I$(SRCDIR)
 Z80CCLINKARGS := -mz80 --no-std-crt0 -Wl-u \
@@ -48,6 +54,11 @@ CFILES         := $(foreach DIR, $(SUBDIRS), $(wildcard $(DIR)/*.$(C_EXT)))
 CFILES         := $(filter-out $(IMGCFILES), $(CFILES))
 ASMFILES       := $(foreach DIR, $(SUBDIRS), $(wildcard $(DIR)/*.$(ASM_EXT)))
 ASMFILES       := $(filter-out $(IMGASMFILES), $(ASMFILES))
+ifeq ($(OVERLAY_SPLASH),1)
+ASMFILES       := $(filter-out $(SRCDIR)/splash.s $(SRCDIR)/music.s, $(ASMFILES))
+else
+ASMFILES       := $(filter-out $(SRCDIR)/overlay/music_overlay.generated.s $(SRCDIR)/overlay/runtime_overlay_loader.generated.s, $(ASMFILES))
+endif
 BIN2CFILES     := $(foreach DIR, $(SUBDIRS), $(wildcard $(DIR)/*.$(BIN_EXT)))
 DSKINCSRCFILES := $(wildcard $(DSKFILESDIR)/*)
 

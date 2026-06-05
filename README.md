@@ -1,23 +1,18 @@
-# Tetris
+# Tetris v0.5
 
-Amstrad CPC `MODE 0` Tetris.
+Amstrad CPC `MODE 0` Tetris built with CPCtelera.
 
-The current source tree is laid out as a CPCtelera project. The older
-Locomotive BASIC prototype is still kept as `TETRIS.BAS`, and the previous
-hand-written Z80 prototype is kept as `src/tetris_mc.asm`.
+Version 0.5 is a DSK-only overlay release. The visible disk entry point is a
+small direct-FDC boot file named `TETRIS.BIN`; the resident game payload and
+runtime overlays are stored in fixed hidden sectors on the DSK.
 
-Run the BASIC prototype on a CPC or emulator:
+Run in WinAPE or on a CPC disk setup:
 
 ```basic
-LOAD "TETRIS.BAS"
-RUN
+RUN"TETRIS.BIN"
 ```
 
-Native CPCtelera output can be generated with the release script:
-
-```powershell
-.\tools\build_cpc_release.ps1
-```
+## Build
 
 The project expects the shared CPCtelera installation at:
 
@@ -25,62 +20,76 @@ The project expects the shared CPCtelera installation at:
 C:\Users\bgone\amstrad\cpctelera
 ```
 
-The Cygwin/make default is configured as `CPCT_PATH ?= ../cpctelera` in
-`cfg/build_config.mk`, so this Tetris repo no longer needs its own embedded
-`.cpctelera-ref` copy.
+Build the official v0.5 overlay disk with:
 
-If PowerShell script execution is disabled on the machine, run:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_overlay_dsk.ps1
+```
+
+Main outputs:
+
+- `dist/TETRIS.DSK`: current v0.5 release disk.
+- `dist/TETRIS-v0.5.DSK`: versioned v0.5 release disk.
+- `dist/TETRIS.BIN`: AMSDOS-headered direct-FDC boot file for reference.
+- `dist/TETRIS-v0.5.BIN`: versioned boot file.
+
+There is no v0.5 CDT because the v0.5 memory strategy depends on disk sector
+overlays. Keep v0.4 as the monolithic/CDT-friendly baseline.
+
+The older non-overlay release script remains available for comparison. Its
+outputs go under `dist\nonoverlay\` so it does not overwrite the official v0.5
+overlay release:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\build_cpc_release.ps1
 ```
 
-Or from a Cygwin shell after installing and setting up CPCtelera:
+## v0.5 Memory Strategy
 
-```sh
-make
-```
+- Resident game code links at `0x1000`.
+- Boot loader runs at `0x0800`.
+- Splash/title data, gameplay music, runtime text/tables, and menu code are
+  loaded from hidden sectors only when needed.
+- Screen RAM remains at `0xC000-0xFFFF`.
+- Current resident payload ends at `0x2E1C`, leaving about 7 KB of guarded
+  resident growth and much more room through overlays.
 
-This creates:
+Details are documented in:
 
-- `obj/TETRIS.bin`: raw CPCtelera machine-code binary, loaded at `&4000`.
-- `TETRIS.dsk`: WinAPE-ready CPC disk image containing `TETRIS.BIN`.
-- `TETRIS.cdt`: CPC tape image containing the machine-code binary.
-- `dist/TETRIS.BIN`: AMSDOS-headered binary for direct `RUN"TETRIS.BIN"`.
-- `dist/TETRIS.DSK`: copied release disk image.
-- `dist/TETRIS.CDT`: copied release tape image.
+- `docs/v0.5-release.md`
+- `docs/overlay-fdc-loader.md`
+- `docs/session-context-v0.5.md`
 
-The release script fails the build if the binary grows into CPC AMSDOS/BASIC
-high memory; `RUN"TETRIS.BIN"` expects the payload to stay below that area.
+## Features
 
-In WinAPE, insert `TETRIS.dsk` into drive A and run:
-
-```basic
-RUN"TETRIS.BIN"
-```
-
-Features:
-
-- Full-screen CPC-style `MODE 0` splash/title picture before the menu.
-- Splash waits for any key or joystick fire while playing a 3-channel Troika-style loop.
-- `MODE 0` display with a 10x20 playfield.
-- Gameplay blocks are drawn as solid CPCtelera tile sprites instead of tiny
-  outline-style cells or plain solid boxes.
-- Menu, panel, and game-over labels use a compact sprite font tuned for `MODE 0`
-  wide pixels.
-- Distinct logical ink colour for each tetromino type.
-- Start menu with keyboard, joystick, and redefine-keys options.
+- Native CPCtelera C/ASM project in `MODE 0`.
+- Full-screen CPC-style splash/title picture before the menu.
+- Splash waits for any key or joystick fire while playing a 3-channel
+  Troika-style loop.
+- 10x20 Tetris playfield with solid CPCtelera tile sprites.
+- Compact sprite font for menu, panel, game over, dedication, and overlays.
+- Animated coloured `Z32X Tetris` menu title.
+- Centered 2x `GAME OVER` text with rapidly rotating character colours.
+- Gameplay screen includes `for my daughter Marija`.
+- Score counter: single/double/triple/Tetris clears score 40/100/300/1200
+  points multiplied by current level.
+- Level progression starts at level 1, caps at level 100, and advances every
+  10 cleared lines.
+- Menu options: keyboard, joystick, redefine keys.
 - Keyboard defaults: `O`/cursor-left, `P`/cursor-right, `Q`/cursor-up rotate,
   `A`/cursor-down, `SPACE` or `RETURN` hard drop.
-- Joystick defaults: left/right/down movement, fire 1 rotate, up or fire 2 hard drop.
-- Direct AY playback of a classic Korobeiniki/Tetris Type-A style arrangement
-  during play.
-- CPCtelera build uses `cpct_setVideoMode`, `cpct_setPalette`,
-  `cpct_setVideoMemoryPage`, `cpct_setVideoMemoryOffset`,
-  `cpct_drawSolidBox`, `cpct_drawSprite`, `cpct_scanKeyboard_f`, and
-  `cpct_waitVSYNC`.
-- Music is generated by a direct AY register player; the line-clear clink is
-  mixed as a short noise accent without using the firmware sound queue.
-- `assets/splash_source.png` is generated by `tools/generate_splash_source.ps1`;
-  run `tools/generate_splash_assets.ps1` afterwards to rebuild the
-  aspect-correct CPC preview and `src/splash.s`.
+- Joystick defaults: left/right/down movement, fire 1 rotate, up or fire 2 hard
+  drop.
+- Direct AY music player with line-clear clink mixed as a short noise accent.
+
+## Project Notes
+
+The older Locomotive BASIC prototype is still kept as `TETRIS.BAS`, and the
+previous hand-written Z80 prototype is kept as `src/tetris_mc.asm`.
+
+Splash source assets are generated with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\generate_splash_source.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\generate_splash_assets.ps1
+```

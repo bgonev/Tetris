@@ -7,31 +7,67 @@ This repository is an Amstrad CPC Tetris game built with CPCtelera.
 - Project root: `C:\Users\bgone\amstrad\Tetris`
 - Shared CPCtelera root: `C:\Users\bgone\amstrad\cpctelera`
 - Shared CPCtelera Cygwin path: `/cygdrive/c/Users/bgone/amstrad/cpctelera`
-- Local Cygwin toolchain used by release script: `toolchains\cygwin64`
+- Local Cygwin toolchain used by release scripts: `toolchains\cygwin64`
 
 Do not re-clone CPCtelera inside this repo. `cfg/build_config.mk` defaults to
-`CPCT_PATH ?= ../cpctelera`, and `tools/build_cpc_release.ps1` resolves the
-shared path automatically.
+`CPCT_PATH ?= ../cpctelera`, and the build scripts resolve the shared path
+automatically.
 
-## Build
+## Preferred v0.5 Build
 
-Preferred release build:
+Official v0.5 release build:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\build_cpc_release.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\build_overlay_dsk.ps1
 ```
 
 Outputs:
 
-- `dist\TETRIS.BIN`: AMSDOS-headered binary for direct `RUN"TETRIS.BIN"`.
-- `dist\TETRIS.DSK`: WinAPE-ready disk image.
-- If WinAPE locks `dist\TETRIS.DSK`, the script writes `dist\TETRIS-UPDATED.DSK`.
+- `dist\TETRIS.DSK`: current v0.5 release disk.
+- `dist\TETRIS-v0.5.DSK`: versioned v0.5 release disk.
+- `dist\TETRIS.BIN`: AMSDOS-headered direct-FDC boot file for reference.
+- `dist\TETRIS-v0.5.BIN`: versioned direct-FDC boot file.
 
-Known binary parameters after recent builds:
+Use:
 
-- Load address: `&4000`
-- Run address: currently `&533E`
-- DSK catalog entry: `TETRIS.BIN`
+```basic
+RUN"TETRIS.BIN"
+```
+
+v0.5 is DSK-only. It uses hidden sectors and direct FDC access, so the overlay
+strategy does not apply to CDT. Keep v0.4 as the monolithic/CDT-friendly build.
+
+## Current v0.5 Overlay Layout
+
+- Boot loader: load/run `0x0800`, direct FDC, catalog filename `TETRIS.BIN`.
+- Resident payload: load `0x1000`, latest highest address `0x2E1C`.
+- Payload sectors: tracks 20-21.
+- Splash/title overlay: load `0x5000`, tracks 30-33.
+- Gameplay music overlay: load `0x9400`, track 34.
+- Runtime font/text/tables overlay: load `0x5000`, track 35.
+- Menu code overlay: load `0x5400`, track 36, currently 3 sectors.
+- Screen RAM: `0xC000-0xFFFF`.
+
+Current practical memory planning:
+
+- About 7 KB safe resident growth below the overlay workspace.
+- About 12 KB continuous overlay room immediately available below gameplay
+  music.
+- About 20-25 KB available with deliberate overlay reuse.
+- About 35 KB theoretically usable across split regions if low/high RAM is
+  managed carefully.
+
+## Important v0.5 Loader Facts
+
+- Boot and runtime loaders use FDC motor control at `0xFA7E`.
+- FDC main status is read at `0xFB7E`; data is read/written at `0xFB7F`.
+- Sector order is `C1 C6 C2 C7 C3 C8 C4 C9 C5`.
+- Treat `sense interrupt status` result `ST0=0x80` as "not ready yet"; keep
+  polling instead of failing.
+- Keep interrupts disabled through the boot payload transfer.
+- Runtime overlay functions are in `tools\runtime_overlay_loader.s`.
+- Boot loader template is `tools\overlay_sector_loader_direct_fdc.s`.
+- The FDC diagnostic builder is `tools\build_fdc_diagnostic_dsk.ps1`.
 
 ## Current Game Features
 
@@ -46,7 +82,8 @@ Known binary parameters after recent builds:
 - Menu options: keyboard, joystick, redefine keys.
 - Keyboard defaults: `O`/cursor-left, `P`/cursor-right, `Q`/cursor-up rotate,
   `A`/cursor-down, `SPACE` or `RETURN` hard drop.
-- Joystick defaults: left/right/down movement, fire 1 rotate, up or fire 2 hard drop.
+- Joystick defaults: left/right/down movement, fire 1 rotate, up or fire 2 hard
+  drop.
 
 ## Important Fixes Already Done
 
@@ -58,6 +95,8 @@ Known binary parameters after recent builds:
   `cpct_setVideoMemoryOffset(0)`, and `cpct_setVideoMode(0)`.
 - Improved block ratio/resolution to solid MODE 0 block sprites.
 - Added line-clear clink as a short AY noise accent without using firmware SOUND.
+- Moved splash/title data, music tables, runtime text/tables, and menu code into
+  overlays for v0.5.
 
 ## Music / Sound
 
@@ -78,13 +117,17 @@ as original/inspired alternatives, not exact note-for-note reproductions.
 
 ## Main Files
 
-- `src/main.c`: game logic, graphics, input, menu, splash flow, gameplay loop.
-- `src/music.s`: direct AY music and clink SFX.
+- `src/main.c`: game logic, graphics, input, splash flow, gameplay loop.
+- `src/music.s`: direct AY music and clink SFX source.
 - `src/splash.s`, `src/splash.h`: generated MODE 0 splash asset.
-- `tools/generate_splash_source.ps1`: creates splash source image with credit text.
-- `tools/generate_splash_assets.ps1`: converts splash image to CPC MODE 0 data.
-- `tools/build_cpc_release.ps1`: builds native output and creates AMSDOS BIN/DSK release.
-- `cfg/build_config.mk`: CPCtelera project config.
+- `tools/build_overlay_dsk.ps1`: official v0.5 overlay DSK release builder.
+- `tools/build_cpc_release.ps1`: older non-overlay release builder.
+- `tools/overlay_sector_loader_direct_fdc.s`: direct-FDC boot loader template.
+- `tools/runtime_overlay_loader.s`: direct-FDC runtime overlay loader template.
+- `tools/menu_overlay.c`: menu/redefine-key code overlay.
+- `tools/build_fdc_diagnostic_dsk.ps1`: FDC diagnostic disk builder.
+- `docs/overlay-fdc-loader.md`: reusable overlay/FDC method notes.
+- `docs/session-context-v0.5.md`: future-session context.
 
 ## WinAPE Usage
 
@@ -94,5 +137,5 @@ Use:
 RUN"TETRIS.BIN"
 ```
 
-If `dist\TETRIS.DSK` cannot be overwritten during builds, close/eject the disk in WinAPE
-or use the generated `dist\TETRIS-UPDATED.DSK`.
+If `dist\TETRIS.DSK` cannot be overwritten during builds, close/eject the disk
+in WinAPE before rebuilding.

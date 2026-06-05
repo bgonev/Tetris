@@ -312,9 +312,17 @@ _music_stop::
    jp ay_silence
 
 _sfx_line_clear::
-   ld a, #8
+   ld a, #4
    ld (sfx_timer), a
-   ret
+   ld d, #6
+   ld e, #4
+   call ay_write
+   ld d, #7
+   ld e, #0x1C
+   call ay_write
+   ld d, #10
+   ld e, #15
+   jp ay_write
 
 _music_play_frame::
    ld a, (music_timer)
@@ -422,7 +430,7 @@ music_render_frame:
    ld e, a
    call ay_write
    ld d, #7
-   ld e, #0x18
+   ld e, #0x1C
    call ay_write
    jr music_write_volumes
 music_no_sfx:

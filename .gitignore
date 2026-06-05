@@ -1,0 +1,19 @@
+obj/
+toolchains/
+.codex-checkpoints/
+
+# Local CPCtelera build products copied to the repo root.
+/TETRIS.cdt
+/TETRIS.dsk
+
+# Iteration/debug disks and temporary payloads.
+/dist/FDC-DIAG-*.DSK
+/dist/TETRIS-UPDATED.DSK
+/dist/TETRIS-v0.4.*
+/dist/TETRIS-v0.5-*-*.DSK
+/dist/TETRIS-v0.5-DIRECT.BIN
+/dist/GAME*.DAT
+/dist/nonoverlay/
+
+# Generated overlay sources are rebuilt by tools/build_overlay_dsk.ps1.
+/src/overlay/
