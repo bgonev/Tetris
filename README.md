@@ -1,10 +1,11 @@
-# Tetris v0.6
+# Tetris v0.7
 
 Amstrad CPC `MODE 0` Tetris built with CPCtelera.
 
-Version 0.6 is a DSK-only direct-FDC overlay release. The visible disk entry
-point is a small boot file named `TETRIS.BIN`; the resident game payload and
-runtime overlays are stored in fixed hidden sectors on the DSK.
+Version 0.7 is a DSK-only direct-FDC overlay release. The visible disk entry
+point is a small boot file named `TETRIS.BIN`; the resident game payload,
+runtime overlays, and persistent high-score sector are stored in fixed hidden
+sectors on the DSK.
 
 Run in WinAPE or on a CPC disk setup:
 
@@ -20,7 +21,7 @@ The project expects the shared CPCtelera installation at:
 C:\Users\bgone\amstrad\cpctelera
 ```
 
-Build the official v0.6 overlay disk with:
+Build the official v0.7 overlay disk with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\build_overlay_dsk.ps1
@@ -28,12 +29,12 @@ powershell -ExecutionPolicy Bypass -File .\tools\build_overlay_dsk.ps1
 
 Main outputs:
 
-- `dist/TETRIS.DSK`: current v0.6 release disk.
-- `dist/TETRIS-v0.6.DSK`: versioned v0.6 release disk.
+- `dist/TETRIS.DSK`: current v0.7 release disk.
+- `dist/TETRIS-v0.7.DSK`: versioned v0.7 release disk.
 - `dist/TETRIS.BIN`: AMSDOS-headered direct-FDC boot file for reference.
-- `dist/TETRIS-v0.6.BIN`: versioned boot file.
+- `dist/TETRIS-v0.7.BIN`: versioned boot file.
 
-There is no v0.6 CDT because the v0.6 memory strategy depends on disk sector
+There is no v0.7 CDT because the v0.7 memory strategy depends on disk sector
 overlays. Keep v0.4 as the monolithic/CDT-friendly baseline.
 
 The older non-overlay release script remains available for comparison. Its
@@ -44,24 +45,22 @@ overlay release:
 powershell -ExecutionPolicy Bypass -File .\tools\build_cpc_release.ps1
 ```
 
-## v0.6 Memory Strategy
+## v0.7 Memory Strategy
 
 - Resident game code links at `0x1000`.
 - Boot loader runs at `0x0800`.
-- Splash/title data, gameplay screen art, gameplay music, and runtime
-  text/tables are loaded from hidden sectors only when needed.
-- Menu and redefine-key code are resident again to remove the game-over to menu
-  reload delay.
+- Splash/title data, gameplay screen art, gameplay music, runtime text/tables,
+  and the high-score sector are loaded from hidden sectors only when needed.
+- Menu and redefine-key code are resident to keep menu return immediate.
 - Screen RAM remains at `0xC000-0xFFFF`.
-- Current resident payload ends at about `0x3217`, leaving about 5.5 KB of
-  guarded resident growth below the overlay workspace and much more room through
-  overlays.
+- Current resident payload ends at `0x3C85`, leaving guarded resident growth
+  below the overlay workspace and more room through overlays.
 
 Details are documented in:
 
-- `docs/v0.6-release.md`
+- `docs/v0.7-release.md`
 - `docs/overlay-fdc-loader.md`
-- `docs/session-context-v0.6.md`
+- `docs/session-context-v0.7.md`
 
 ## Features
 
@@ -73,10 +72,15 @@ Details are documented in:
   Troika-style loop.
 - Mock-inspired gameplay screen overlay generated from
   `assets/new_gameplay_layout.jpg`.
+- Green dome treatment on the gameplay tower.
+- Compact left-aligned HUD with 5-digit score:
+  `SCORE 00000`, `LEVEL 001`, `LINES 0000`.
 - 10x20 Tetris playfield with solid CPCtelera tile sprites.
 - Compact sprite font for menu, panel, game over, and gameplay labels.
 - Animated coloured `Z32X Tetris` menu title.
-- Centered 2x `GAME OVER` text with rapidly rotating character colours.
+- Animated `GAME OVER` screen with persistent five-entry high-score table.
+- High-score table is loaded from and saved to a hidden DSK sector.
+- Default high-score leader: `MARIJA 05000`.
 - Score counter: single/double/triple/Tetris clears score 40/100/300/1200
   points multiplied by current level.
 - Level progression starts at level 1, caps at level 100, and advances every

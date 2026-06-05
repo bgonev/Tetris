@@ -2,7 +2,8 @@ param(
     [string]$OutputDsk = "dist\TETRIS.DSK",
     [int]$LoaderLoadAddress = 0x0800,
     [int]$PayloadStartTrack = 20,
-    [int]$GameplayScreenStartTrack = 22,
+    [int]$GameplayScreenStartTrack = 23,
+    [int]$HighScoreStartTrack = 27,
     [int]$SplashAddress = 0x5000,
     [int]$SplashStartTrack = 30,
     [int]$GameplayMusicAddress = 0x9400,
@@ -18,7 +19,7 @@ $LocalBash = Join-Path $Root.Path "toolchains\cygwin64\bin\bash.exe"
 $SharedCpct = Join-Path $Root.Path "..\cpctelera"
 $SectorIds = @(0xC1, 0xC6, 0xC2, 0xC7, 0xC3, 0xC8, 0xC4, 0xC9, 0xC5)
 $SectorSize = 512
-$ReleaseVersion = "v0.6"
+$ReleaseVersion = "v0.7"
 
 function Set-WordLE {
     param(
@@ -289,6 +290,9 @@ function New-RuntimeOverlayLoaderSource {
         [Parameter(Mandatory = $true)][int]$GameplayScreenAddress,
         [Parameter(Mandatory = $true)][int]$GameplayScreenTrack,
         [Parameter(Mandatory = $true)][int]$GameplayScreenSectorCount,
+        [Parameter(Mandatory = $true)][int]$HighScoreAddress,
+        [Parameter(Mandatory = $true)][int]$HighScoreTrack,
+        [Parameter(Mandatory = $true)][int]$HighScoreSectorCount,
         [Parameter(Mandatory = $true)][int]$RuntimeFontAddress,
         [Parameter(Mandatory = $true)][int]$RuntimeFontTrack,
         [Parameter(Mandatory = $true)][int]$RuntimeFontSectorCount
@@ -304,6 +308,9 @@ function New-RuntimeOverlayLoaderSource {
     $source = Set-AsmEquValue $source "GAMEPLAY_SCREEN_DEST" $GameplayScreenAddress
     $source = Set-AsmEquValue $source "GAMEPLAY_SCREEN_TRACK" $GameplayScreenTrack
     $source = Set-AsmEquValue $source "GAMEPLAY_SCREEN_SECTORS" $GameplayScreenSectorCount
+    $source = Set-AsmEquValue $source "HIGH_SCORE_DEST" $HighScoreAddress
+    $source = Set-AsmEquValue $source "HIGH_SCORE_TRACK" $HighScoreTrack
+    $source = Set-AsmEquValue $source "HIGH_SCORE_SECTORS" $HighScoreSectorCount
     $source = Set-AsmEquValue $source "RUNTIME_FONT_DEST" $RuntimeFontAddress
     $source = Set-AsmEquValue $source "RUNTIME_FONT_TRACK" $RuntimeFontTrack
     $source = Set-AsmEquValue $source "RUNTIME_FONT_SECTORS" $RuntimeFontSectorCount
@@ -458,7 +465,7 @@ function Add-PayloadWord {
 
 function Get-OverlayTextEntries {
     return @(
-        [PSCustomObject]@{ Name = "TXT_MENU_TITLE"; Text = "Z32X TETRIS V.0.6" },
+        [PSCustomObject]@{ Name = "TXT_MENU_TITLE"; Text = "Z32X TETRIS V.0.7" },
         [PSCustomObject]@{ Name = "TXT_GAME_OVER"; Text = "GAME OVER" },
         [PSCustomObject]@{ Name = "TXT_BLANK8"; Text = "        " },
         [PSCustomObject]@{ Name = "TXT_BLANK16"; Text = "                " },
@@ -482,7 +489,10 @@ function Get-OverlayTextEntries {
         [PSCustomObject]@{ Name = "TXT_ROTATE"; Text = "ROTATE" },
         [PSCustomObject]@{ Name = "TXT_DOWN"; Text = "DOWN" },
         [PSCustomObject]@{ Name = "TXT_DROP"; Text = "DROP" },
-        [PSCustomObject]@{ Name = "TXT_PRESS_ANY_KEY"; Text = "PRESS ANY KEY" },
+        [PSCustomObject]@{ Name = "TXT_BEST_SCORES"; Text = "BEST SCORES" },
+        [PSCustomObject]@{ Name = "TXT_ENTER_NAME"; Text = "ENTER NAME" },
+        [PSCustomObject]@{ Name = "TXT_NAME_PAD"; Text = "      " },
+        [PSCustomObject]@{ Name = "TXT_SCORE_PAD"; Text = "     " },
         [PSCustomObject]@{ Name = "TXT_KEY_UNKNOWN"; Text = "KEY" },
         [PSCustomObject]@{ Name = "TXT_KEY_O"; Text = "O" },
         [PSCustomObject]@{ Name = "TXT_KEY_P"; Text = "P" },
@@ -610,6 +620,8 @@ function New-RuntimeOverlayLayout {
         [Parameter(Mandatory = $true)][int]$GameplayMusicAddress,
         [Parameter(Mandatory = $true)][int]$GameplayScreenStartTrack,
         [Parameter(Mandatory = $true)][int]$GameplayScreenLength,
+        [Parameter(Mandatory = $true)][int]$HighScoreStartTrack,
+        [Parameter(Mandatory = $true)][int]$HighScoreLength,
         [Parameter(Mandatory = $true)][int]$RuntimeFontLength
     )
 
@@ -621,10 +633,18 @@ function New-RuntimeOverlayLayout {
     $gameplayMusicEndTrack = [int]($gameplayMusicTrack + [Math]::Floor(($gameplayMusicSectorCount - 1) / $SectorIds.Count))
     $gameplayScreenSectorCount = [int][Math]::Ceiling($GameplayScreenLength / $SectorSize)
     $gameplayScreenEndTrack = [int]($GameplayScreenStartTrack + [Math]::Floor(($gameplayScreenSectorCount - 1) / $SectorIds.Count))
+    $highScoreSectorCount = [int][Math]::Ceiling($HighScoreLength / $SectorSize)
+    $highScoreEndTrack = [int]($HighScoreStartTrack + [Math]::Floor(($highScoreSectorCount - 1) / $SectorIds.Count))
     $runtimeFontSectorCount = [int][Math]::Ceiling($runtimeFontLength / $SectorSize)
     $runtimeFontTrack = $gameplayMusicEndTrack + 1
     $runtimeFontEndTrack = [int]($runtimeFontTrack + [Math]::Floor(($runtimeFontSectorCount - 1) / $SectorIds.Count))
 
+    if ($gameplayScreenEndTrack -ge $HighScoreStartTrack) {
+        throw "Gameplay screen hidden sectors would overlap the high-score sector."
+    }
+    if ($highScoreEndTrack -ge $SplashStartTrack) {
+        throw "High-score hidden sector would overlap the splash/title segment."
+    }
     if ($gameplayScreenEndTrack -ge $SplashStartTrack) {
         throw "Gameplay screen hidden sectors would overlap the splash/title segment."
     }
@@ -635,7 +655,7 @@ function New-RuntimeOverlayLayout {
         throw ("Gameplay music address 0x{0:X4} is too close to firmware RAM." -f $GameplayMusicAddress)
     }
 
-    New-RuntimeOverlayLoaderSource "tools\runtime_overlay_loader.s" "src\overlay\runtime_overlay_loader.generated.s" $SplashAddress $SplashStartTrack $splashTitleSectorCount $GameplayMusicAddress $gameplayMusicTrack $gameplayMusicSectorCount 0xC000 $GameplayScreenStartTrack $gameplayScreenSectorCount $SplashAddress $runtimeFontTrack $runtimeFontSectorCount
+    New-RuntimeOverlayLoaderSource "tools\runtime_overlay_loader.s" "src\overlay\runtime_overlay_loader.generated.s" $SplashAddress $SplashStartTrack $splashTitleSectorCount $GameplayMusicAddress $gameplayMusicTrack $gameplayMusicSectorCount 0xC000 $GameplayScreenStartTrack $gameplayScreenSectorCount 0x4E00 $HighScoreStartTrack $highScoreSectorCount $SplashAddress $runtimeFontTrack $runtimeFontSectorCount
 
     return [PSCustomObject]@{
         SplashTitleAddress = $SplashAddress
@@ -653,6 +673,11 @@ function New-RuntimeOverlayLayout {
         GameplayScreenLength = $GameplayScreenLength
         GameplayScreenSectorCount = $gameplayScreenSectorCount
         GameplayScreenEndTrack = $gameplayScreenEndTrack
+        HighScoreAddress = 0x4E00
+        HighScoreTrack = $HighScoreStartTrack
+        HighScoreLength = $HighScoreLength
+        HighScoreSectorCount = $highScoreSectorCount
+        HighScoreEndTrack = $highScoreEndTrack
         RuntimeFontAddress = $SplashAddress
         RuntimeFontTrack = $runtimeFontTrack
         RuntimeFontLength = $runtimeFontLength
@@ -869,6 +894,62 @@ function New-PaddedBinary {
     }
 }
 
+function Set-AsciiField {
+    param(
+        [Parameter(Mandatory = $true)][byte[]]$Bytes,
+        [Parameter(Mandatory = $true)][int]$Offset,
+        [Parameter(Mandatory = $true)][int]$Length,
+        [Parameter(Mandatory = $true)][string]$Text
+    )
+
+    $upper = $Text.ToUpperInvariant()
+    $encoded = [System.Text.Encoding]::ASCII.GetBytes($upper.Substring(0, [Math]::Min($Length, $upper.Length)))
+    for ($i = 0; $i -lt $Length; $i++) {
+        $Bytes[$Offset + $i] = [byte][char]' '
+    }
+    [Array]::Copy($encoded, 0, $Bytes, $Offset, $encoded.Length)
+}
+
+function New-HighScoreSector {
+    param([Parameter(Mandatory = $true)][string]$OutputPath)
+
+    $bytes = New-Object byte[] $SectorSize
+    $bytes[0] = [byte][char]'H'
+    $bytes[1] = [byte][char]'S'
+    $bytes[2] = [byte][char]'0'
+    $bytes[3] = [byte][char]'7'
+    $bytes[4] = 1
+    $bytes[5] = 5
+
+    $entries = @(
+        [PSCustomObject]@{ Name = "MARIJA"; Score = "05000" },
+        [PSCustomObject]@{ Name = "NIKOLA"; Score = "00870" },
+        [PSCustomObject]@{ Name = "ELENA";  Score = "00640" },
+        [PSCustomObject]@{ Name = "GORAN";  Score = "00420" },
+        [PSCustomObject]@{ Name = "IVA";    Score = "00250" }
+    )
+
+    $entryOffset = 8
+    foreach ($entry in $entries) {
+        Set-AsciiField $bytes $entryOffset 6 $entry.Name
+        Set-AsciiField $bytes ($entryOffset + 6) 5 $entry.Score
+        $entryOffset += 11
+    }
+
+    $checksum = 0
+    for ($i = 8; $i -lt $entryOffset; $i++) {
+        $checksum = ($checksum + [int]$bytes[$i]) -band 0xFFFF
+    }
+    Set-WordLE $bytes 6 $checksum
+
+    [System.IO.File]::WriteAllBytes(([System.IO.Path]::GetFullPath($OutputPath)), $bytes)
+    return [PSCustomObject]@{
+        Path = $OutputPath
+        Length = $bytes.Length
+        SectorCount = 1
+    }
+}
+
 Push-Location $Root
 try {
     $cpctPath = Get-CpctPath
@@ -909,7 +990,8 @@ try {
             throw "Gameplay background generation failed with exit code $LASTEXITCODE."
         }
         $gameplayScreenLength = (Get-Item "obj\overlay\gameplay_screen.bin").Length
-        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $GameplayScreenStartTrack $gameplayScreenLength $runtimeTextInfo.Length
+        $highScoreInfo = New-HighScoreSector "obj\overlay\high_scores.bin"
+        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $GameplayScreenStartTrack $gameplayScreenLength $HighScoreStartTrack $highScoreInfo.Length $runtimeTextInfo.Length
 
         $buildCmd = "cd '$cygRoot' && export CPCT_PATH='$cygCpct' && export PATH='$cygCpct/tools/sdcc-3.6.8-r9946/bin:$cygCpct/tools/iDSK-0.13/bin:$cygCpct/tools/hex2bin-2.0/bin:$cygCpct/tools/2cdt/bin:$cygCpct/tools/dskgen/bin':`$PATH && make OVERLAY_SPLASH=1"
         & $LocalBash -lc $buildCmd
@@ -926,7 +1008,8 @@ try {
             throw "Gameplay background generation failed with exit code $LASTEXITCODE."
         }
         $gameplayScreenLength = (Get-Item "obj\overlay\gameplay_screen.bin").Length
-        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $GameplayScreenStartTrack $gameplayScreenLength $runtimeTextInfo.Length
+        $highScoreInfo = New-HighScoreSector "obj\overlay\high_scores.bin"
+        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $GameplayScreenStartTrack $gameplayScreenLength $HighScoreStartTrack $highScoreInfo.Length $runtimeTextInfo.Length
     }
 
     $payloadPath = "obj\TETRIS.bin"
@@ -1029,6 +1112,7 @@ try {
     $writtenSectorCount = Write-PayloadSectors $OutputDsk $payloadPath $PayloadStartTrack
     $gameplayScreenPath = "obj\overlay\gameplay_screen.bin"
     $writtenGameplayScreenSectorCount = Write-PayloadSectors $OutputDsk $gameplayScreenPath $overlayLayout.GameplayScreenTrack
+    $writtenHighScoreSectorCount = Write-PayloadSectors $OutputDsk $highScoreInfo.Path $overlayLayout.HighScoreTrack
     $writtenSplashSectorCount = Write-PayloadSectors $OutputDsk $splashPath $SplashStartTrack
     $writtenGameplayMusicSectorCount = Write-PayloadSectors $OutputDsk $gameplayMusicPath $overlayLayout.GameplayMusicTrack
     $runtimeFontPath = $runtimeTextInfo.Path
@@ -1038,6 +1122,7 @@ try {
     $writtenRuntimeFontSectorCount = Write-PayloadSectors $OutputDsk $runtimeFontPath $overlayLayout.RuntimeFontTrack
     Test-PayloadSectors $OutputDsk $payloadPath $PayloadStartTrack
     Test-PayloadSectors $OutputDsk $gameplayScreenPath $overlayLayout.GameplayScreenTrack
+    Test-PayloadSectors $OutputDsk $highScoreInfo.Path $overlayLayout.HighScoreTrack
     Test-PayloadSectors $OutputDsk $splashPath $SplashStartTrack
     Test-PayloadSectors $OutputDsk $gameplayMusicPath $overlayLayout.GameplayMusicTrack
     Test-PayloadSectors $OutputDsk $runtimeFontPath $overlayLayout.RuntimeFontTrack
@@ -1050,6 +1135,7 @@ try {
     Write-Host ("Loader: load/run 0x{0:X4}; size {1} bytes" -f $LoaderLoadAddress, (Get-Item "obj\overlay\overlay_sector_loader.bin").Length)
     Write-Host ("Payload: load 0x{0:X4}; run 0x{1:X4}; highest 0x{2:X4}; bytes {3}; sectors {4}; tracks {5}-{6}" -f $loadAddress, $runAddress, $highestAddress, $payloadLength, $writtenSectorCount, $PayloadStartTrack, $endTrack)
     Write-Host ("Runtime gameplay screen overlay: load 0x{0:X4}; bytes {1}; sectors {2}; tracks {3}-{4}" -f $overlayLayout.GameplayScreenAddress, $overlayLayout.GameplayScreenLength, $writtenGameplayScreenSectorCount, $overlayLayout.GameplayScreenTrack, $overlayLayout.GameplayScreenEndTrack)
+    Write-Host ("High-score sector: buffer 0x{0:X4}; bytes {1}; sectors {2}; track {3}" -f $overlayLayout.HighScoreAddress, $overlayLayout.HighScoreLength, $writtenHighScoreSectorCount, $overlayLayout.HighScoreTrack)
     Write-Host ("Runtime splash/title overlay: load 0x{0:X4}; bytes {1}; sectors {2}; tracks {3}-{4}" -f $SplashAddress, $splashLength, $writtenSplashSectorCount, $SplashStartTrack, $splashEndTrack)
     Write-Host ("Runtime gameplay music overlay: load 0x{0:X4}; bytes {1}; sectors {2}; tracks {3}-{4}" -f $GameplayMusicAddress, $gameplayMusicDataLength, $writtenGameplayMusicSectorCount, $overlayLayout.GameplayMusicTrack, $gameplayMusicEndTrack)
     Write-Host ("Runtime font/text/tables overlay: load 0x{0:X4}; glyphs at 0x{1:X4}; shapes at 0x{2:X4}; keys at 0x{3:X4}; bytes {4}; sectors {5}; tracks {6}-{7}" -f $overlayLayout.RuntimeFontAddress, $runtimeTextInfo.GlyphAddress, $runtimeTextInfo.ShapesAddress, $runtimeTextInfo.KeyChoicesAddress, $overlayLayout.RuntimeFontLength, $writtenRuntimeFontSectorCount, $overlayLayout.RuntimeFontTrack, $overlayLayout.RuntimeFontEndTrack)

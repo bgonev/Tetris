@@ -3,7 +3,7 @@
 #ifdef OVERLAY_SPLASH
 #include "overlay/overlay_text.generated.h"
 #else
-#define TXT_MENU_TITLE "Z32X TETRIS V.0.6"
+#define TXT_MENU_TITLE "Z32X TETRIS V.0.7"
 #define TXT_GAME_OVER "GAME OVER"
 #define TXT_BLANK8 "        "
 #define TXT_BLANK16 "                "
@@ -27,7 +27,10 @@
 #define TXT_ROTATE "ROTATE"
 #define TXT_DOWN "DOWN"
 #define TXT_DROP "DROP"
-#define TXT_PRESS_ANY_KEY "PRESS ANY KEY"
+#define TXT_BEST_SCORES "BEST SCORES"
+#define TXT_ENTER_NAME "ENTER NAME"
+#define TXT_NAME_PAD "      "
+#define TXT_SCORE_PAD "     "
 #define TXT_KEY_UNKNOWN "KEY"
 #define TXT_KEY_O "O"
 #define TXT_KEY_P "P"
@@ -51,15 +54,16 @@
 #define CELL_BYTES (CELL_WB * CELL_H)
 #define BOARD_X 30
 #define BOARD_Y 20
-#define LEFT_PANEL_X 2
-#define SCORE_VALUE_X 34
+#define LEFT_PANEL_X 0
+#define HUD_VALUE_X 12
+#define SCORE_VALUE_X HUD_VALUE_X
 #define SCORE_VALUE_Y 2
-#define LEVEL_LABEL_Y 40
-#define LEVEL_VALUE_X 15
-#define LEVEL_VALUE_Y 56
-#define LINES_LABEL_Y 72
-#define LINES_VALUE_X 15
-#define LINES_VALUE_Y 88
+#define LEVEL_LABEL_Y 14
+#define LEVEL_VALUE_X HUD_VALUE_X
+#define LEVEL_VALUE_Y LEVEL_LABEL_Y
+#define LINES_LABEL_Y 26
+#define LINES_VALUE_X HUD_VALUE_X
+#define LINES_VALUE_Y LINES_LABEL_Y
 #define NEXT_PREVIEW_X 60
 #define NEXT_PREVIEW_Y 128
 #define NEXT_PREVIEW_CLEAR_WB 16
@@ -79,10 +83,33 @@
 #define GAME_OVER_TEXT TXT_GAME_OVER
 #define GAME_OVER_LEN 9
 #define GAME_OVER_X 22
-#define GAME_OVER_Y 80
+#define GAME_OVER_Y 24
 #define GAME_OVER_WB 4
 #define GAME_OVER_COLOUR_FRAMES 3
-#define SCORE_DIGITS 7
+#define HIGH_SCORE_BUFFER ((u8*)0x4E00)
+#define HIGH_SCORE_MAGIC0 'H'
+#define HIGH_SCORE_MAGIC1 'S'
+#define HIGH_SCORE_MAGIC2 '0'
+#define HIGH_SCORE_MAGIC3 '7'
+#define HIGH_SCORE_VERSION 1
+#define HIGH_SCORE_COUNT 5
+#define HIGH_SCORE_NAME_LEN 6
+#define HIGH_SCORE_SCORE_LEN SCORE_DIGITS
+#define HIGH_SCORE_ENTRY_SIZE (HIGH_SCORE_NAME_LEN + HIGH_SCORE_SCORE_LEN)
+#define HIGH_SCORE_ENTRIES_OFFSET 8
+#define HIGH_SCORE_NONE 0xFF
+#define HIGH_SCORE_TITLE_X 29
+#define HIGH_SCORE_TITLE_Y 64
+#define HIGH_SCORE_ROW_X 18
+#define HIGH_SCORE_NAME_X 24
+#define HIGH_SCORE_SCORE_X 48
+#define HIGH_SCORE_ROW_Y 84
+#define HIGH_SCORE_ROW_STEP 16
+#define NAME_PROMPT_X 29
+#define NAME_PROMPT_Y 168
+#define NAME_INPUT_X 34
+#define NAME_INPUT_Y 184
+#define SCORE_DIGITS 5
 #define SH(x, y) (u8)(((y) << 4) | (x))
 #define SHAPE_X(cell) ((cell) & 0x0F)
 #define SHAPE_Y(cell) ((cell) >> 4)
@@ -108,6 +135,8 @@ extern void firmware_set_mode0(void);
 #ifdef OVERLAY_SPLASH
 extern void overlay_load_initial_segments(void);
 extern void overlay_load_gameplay_screen(void);
+extern void overlay_load_high_scores(void);
+extern void overlay_save_high_scores(void);
 extern void overlay_load_runtime_font(void);
 #ifdef MENU_CODE_OVERLAY
 extern void overlay_load_menu_code(void);
@@ -119,6 +148,16 @@ typedef struct {
    cpct_keyID id;
    const char* name;
 } KeyChoice;
+
+typedef struct {
+   cpct_keyID id;
+   char letter;
+} NameKeyChoice;
+
+typedef struct {
+   char name[HIGH_SCORE_NAME_LEN + 1];
+   char score[HIGH_SCORE_SCORE_LEN + 1];
+} HighScoreEntry;
 
 static u8 board[BOARD_H][BOARD_W];
 static u8 cellPattern[16];
@@ -136,6 +175,7 @@ static u8 gravityDelay;
 static u8 rngSeed;
 static u16 linesCleared;
 static char scoreText[SCORE_DIGITS + 1];
+static HighScoreEntry highScores[HIGH_SCORE_COUNT];
 static u8 level;
 static u8 controlMode;
 static u8 holdL;
@@ -149,6 +189,10 @@ static cpct_keyID keyRotate;
 static cpct_keyID keyDown;
 static cpct_keyID keyDrop;
 static u16 firmwareRomPointer;
+
+static u8 anyInputPressed(void);
+static void waitReleased(void);
+static void setVideoHardware(void);
 
 static const u8 palette[16] = {
    HW_BLUE, HW_BRIGHT_CYAN, HW_BRIGHT_YELLOW, HW_SKY_BLUE,
@@ -205,6 +249,17 @@ static const KeyChoice keyChoices[] = {
 #define KEY_CHOICES OVERLAY_KEY_CHOICES
 #define KEY_CHOICE_COUNT OVERLAY_KEY_CHOICE_COUNT
 #endif
+
+static const NameKeyChoice nameKeyChoices[] = {
+   { Key_A, 'A' }, { Key_B, 'B' }, { Key_C, 'C' }, { Key_D, 'D' },
+   { Key_E, 'E' }, { Key_F, 'F' }, { Key_G, 'G' }, { Key_H, 'H' },
+   { Key_I, 'I' }, { Key_J, 'J' }, { Key_K, 'K' }, { Key_L, 'L' },
+   { Key_M, 'M' }, { Key_N, 'N' }, { Key_O, 'O' }, { Key_P, 'P' },
+   { Key_Q, 'Q' }, { Key_R, 'R' }, { Key_S, 'S' }, { Key_T, 'T' },
+   { Key_U, 'U' }, { Key_V, 'V' }, { Key_W, 'W' }, { Key_X, 'X' },
+   { Key_Y, 'Y' }, { Key_Z, 'Z' }
+};
+#define NAME_KEY_COUNT (sizeof(nameKeyChoices) / sizeof(nameKeyChoices[0]))
 
 #ifndef MENU_CODE_OVERLAY
 static const char* keyName(cpct_keyID key) {
@@ -310,6 +365,178 @@ static void drawNumberWidth(u8 x, u8 y, u16 value, u8 width) {
    }
    drawText(x, y, blank, 9);
    drawText(x, y, buf, 9);
+}
+
+static void copyFixedName(char* dst, const char* src) {
+   u8 i;
+   char c;
+   for (i = 0; i < HIGH_SCORE_NAME_LEN; ++i) {
+      c = src[i];
+      if (!c)
+         c = ' ';
+      if (c >= 'a' && c <= 'z')
+         c = (char)(c - 'a' + 'A');
+      dst[i] = c;
+   }
+   dst[HIGH_SCORE_NAME_LEN] = 0;
+}
+
+static void copyFixedScore(char* dst, const char* src) {
+   u8 i;
+   char c;
+   for (i = 0; i < HIGH_SCORE_SCORE_LEN; ++i) {
+      c = src[i];
+      dst[i] = (c >= '0' && c <= '9') ? c : '0';
+   }
+   dst[HIGH_SCORE_SCORE_LEN] = 0;
+}
+
+static void setHighScoreEntry(u8 index, const char* name, const char* score) {
+   copyFixedName(highScores[index].name, name);
+   copyFixedScore(highScores[index].score, score);
+}
+
+static void seedHighScores(void) {
+   setHighScoreEntry(0, "MARIJA", "05000");
+   setHighScoreEntry(1, "NIKOLA", "00870");
+   setHighScoreEntry(2, "ELENA",  "00640");
+   setHighScoreEntry(3, "GORAN",  "00420");
+   setHighScoreEntry(4, "IVA",    "00250");
+}
+
+static u16 highScoreChecksum(const u8* sector) {
+   u16 checksum;
+   u16 i;
+   checksum = 0;
+   for (i = 0; i < HIGH_SCORE_COUNT * HIGH_SCORE_ENTRY_SIZE; ++i)
+      checksum += sector[HIGH_SCORE_ENTRIES_OFFSET + i];
+   return checksum;
+}
+
+static u8 highScoreSectorValid(void) {
+   const u8* sector;
+   u16 stored;
+   sector = HIGH_SCORE_BUFFER;
+   if (sector[0] != HIGH_SCORE_MAGIC0 || sector[1] != HIGH_SCORE_MAGIC1 || sector[2] != HIGH_SCORE_MAGIC2 || sector[3] != HIGH_SCORE_MAGIC3)
+      return 0;
+   if (sector[4] != HIGH_SCORE_VERSION || sector[5] != HIGH_SCORE_COUNT)
+      return 0;
+   stored = (u16)sector[6] | ((u16)sector[7] << 8);
+   return stored == highScoreChecksum(sector);
+}
+
+static void unpackHighScoreSector(void) {
+   const u8* sector;
+   u8 entry;
+   u8 i;
+   u16 offset;
+   sector = HIGH_SCORE_BUFFER;
+   offset = HIGH_SCORE_ENTRIES_OFFSET;
+   for (entry = 0; entry < HIGH_SCORE_COUNT; ++entry) {
+      for (i = 0; i < HIGH_SCORE_NAME_LEN; ++i)
+         highScores[entry].name[i] = (char)sector[offset + i];
+      highScores[entry].name[HIGH_SCORE_NAME_LEN] = 0;
+      for (i = 0; i < HIGH_SCORE_SCORE_LEN; ++i)
+         highScores[entry].score[i] = (char)sector[offset + HIGH_SCORE_NAME_LEN + i];
+      highScores[entry].score[HIGH_SCORE_SCORE_LEN] = 0;
+      offset += HIGH_SCORE_ENTRY_SIZE;
+   }
+}
+
+static void packHighScoreSector(void) {
+   u8* sector;
+   u8 entry;
+   u8 i;
+   u16 offset;
+   u16 checksum;
+   sector = HIGH_SCORE_BUFFER;
+   for (offset = 0; offset < 512; ++offset)
+      sector[offset] = 0;
+   sector[0] = HIGH_SCORE_MAGIC0;
+   sector[1] = HIGH_SCORE_MAGIC1;
+   sector[2] = HIGH_SCORE_MAGIC2;
+   sector[3] = HIGH_SCORE_MAGIC3;
+   sector[4] = HIGH_SCORE_VERSION;
+   sector[5] = HIGH_SCORE_COUNT;
+   offset = HIGH_SCORE_ENTRIES_OFFSET;
+   for (entry = 0; entry < HIGH_SCORE_COUNT; ++entry) {
+      for (i = 0; i < HIGH_SCORE_NAME_LEN; ++i)
+         sector[offset + i] = (u8)highScores[entry].name[i];
+      for (i = 0; i < HIGH_SCORE_SCORE_LEN; ++i)
+         sector[offset + HIGH_SCORE_NAME_LEN + i] = (u8)highScores[entry].score[i];
+      offset += HIGH_SCORE_ENTRY_SIZE;
+   }
+   checksum = highScoreChecksum(sector);
+   sector[6] = (u8)(checksum & 0xFF);
+   sector[7] = (u8)(checksum >> 8);
+}
+
+static void loadHighScores(void) {
+#ifdef OVERLAY_SPLASH
+   overlay_load_high_scores();
+   if (highScoreSectorValid()) {
+      unpackHighScoreSector();
+      return;
+   }
+#endif
+   seedHighScores();
+   packHighScoreSector();
+}
+
+static void saveHighScores(void) {
+   packHighScoreSector();
+#ifdef OVERLAY_SPLASH
+   overlay_save_high_scores();
+   setVideoHardware();
+#endif
+}
+
+static i8 compareScoreDigits(const char* left, const char* right) {
+   u8 i;
+   for (i = 0; i < HIGH_SCORE_SCORE_LEN; ++i) {
+      if (left[i] > right[i])
+         return 1;
+      if (left[i] < right[i])
+         return -1;
+   }
+   return 0;
+}
+
+static u8 scoreIsZero(const char* score) {
+   u8 i;
+   for (i = 0; i < HIGH_SCORE_SCORE_LEN; ++i)
+      if (score[i] != '0')
+         return 0;
+   return 1;
+}
+
+static u8 highScoreInsertPosition(const char* score) {
+   u8 i;
+   if (scoreIsZero(score))
+      return HIGH_SCORE_NONE;
+   if (compareScoreDigits(score, highScores[HIGH_SCORE_COUNT - 1].score) < 0)
+      return HIGH_SCORE_NONE;
+   for (i = 0; i < HIGH_SCORE_COUNT; ++i)
+      if (compareScoreDigits(score, highScores[i].score) > 0)
+         return i;
+   return HIGH_SCORE_COUNT - 1;
+}
+
+static void insertHighScore(u8 position, const char* name, const char* score) {
+   i8 i;
+   for (i = HIGH_SCORE_COUNT - 1; i > (i8)position; --i) {
+      copyFixedName(highScores[i].name, highScores[i - 1].name);
+      copyFixedScore(highScores[i].score, highScores[i - 1].score);
+   }
+   setHighScoreEntry(position, name, score);
+}
+
+static const char* visibleScoreStart(const char* score) {
+   u8 i;
+   for (i = 0; i < HIGH_SCORE_SCORE_LEN - 1; ++i)
+      if (score[i] != '0')
+         return score + i;
+   return score + HIGH_SCORE_SCORE_LEN - 1;
 }
 
 static void resetScore(void) {
@@ -639,6 +866,119 @@ static void drawGameOverTitle(u8 phase) {
    u8 i;
    for (i = 0; i < GAME_OVER_LEN; ++i)
       drawBigChar2x(GAME_OVER_X + i * GAME_OVER_WB, GAME_OVER_Y, GAME_OVER_TEXT[i], ((i + phase) % 15) + 1);
+}
+
+static void drawScoreDigits(u8 x, u8 y, const char* score) {
+   drawText(x, y, TXT_SCORE_PAD, 9);
+   drawText(x, y, visibleScoreStart(score), 9);
+}
+
+static void drawHighScoreBoard(void) {
+   u8 i;
+   u8 y;
+   char rank[2];
+   rank[1] = 0;
+   drawText(HIGH_SCORE_TITLE_X, HIGH_SCORE_TITLE_Y, TXT_BEST_SCORES, 11);
+   for (i = 0; i < HIGH_SCORE_COUNT; ++i) {
+      y = HIGH_SCORE_ROW_Y + i * HIGH_SCORE_ROW_STEP;
+      rank[0] = '1' + i;
+      drawText(HIGH_SCORE_ROW_X, y, rank, 2);
+      drawText(HIGH_SCORE_NAME_X, y, TXT_NAME_PAD, 9);
+      drawText(HIGH_SCORE_NAME_X, y, highScores[i].name, 9);
+      drawScoreDigits(HIGH_SCORE_SCORE_X, y, highScores[i].score);
+   }
+}
+
+static void drawGameOverScoreboard(void) {
+   cpct_clearScreen(cellPattern[0]);
+   drawGameOverTitle(0);
+   drawHighScoreBoard();
+}
+
+static char readNameKey(void) {
+   u8 i;
+   for (i = 0; i < NAME_KEY_COUNT; ++i)
+      if (cpct_isKeyPressed(nameKeyChoices[i].id))
+         return nameKeyChoices[i].letter;
+   return 0;
+}
+
+static void drawNameInput(const char* name) {
+   drawText(NAME_INPUT_X, NAME_INPUT_Y, TXT_NAME_PAD, 9);
+   drawText(NAME_INPUT_X, NAME_INPUT_Y, name, 9);
+}
+
+static void tickGameOverTitle(u8* phase, u8* frame) {
+   if (++(*frame) >= GAME_OVER_COLOUR_FRAMES) {
+      *frame = 0;
+      if (++(*phase) >= 15)
+         *phase = 0;
+      drawGameOverTitle(*phase);
+   }
+}
+
+static void waitReleasedGameOverTitle(u8* phase, u8* frame) {
+   do {
+      cpct_waitVSYNC();
+      tickGameOverTitle(phase, frame);
+      cpct_scanKeyboard_f();
+   } while (anyInputPressed());
+}
+
+static void enterHighScoreName(u8 position) {
+   char name[HIGH_SCORE_NAME_LEN + 1];
+   char key;
+   u8 len;
+   u8 phase;
+   u8 frame;
+   len = 0;
+   phase = 0;
+   frame = 0;
+   name[0] = 0;
+   drawText(NAME_PROMPT_X, NAME_PROMPT_Y, TXT_ENTER_NAME, 11);
+   drawNameInput(name);
+   waitReleasedGameOverTitle(&phase, &frame);
+   while (1) {
+      cpct_waitVSYNC();
+      tickGameOverTitle(&phase, &frame);
+      cpct_scanKeyboard_f();
+      if (len && (cpct_isKeyPressed(Key_Return) || cpct_isKeyPressed(Key_Enter)))
+         break;
+      if (len && cpct_isKeyPressed(Key_Del)) {
+         --len;
+         name[len] = 0;
+         drawNameInput(name);
+         waitReleasedGameOverTitle(&phase, &frame);
+      }
+      key = readNameKey();
+      if (key) {
+         name[len] = key;
+         ++len;
+         name[len] = 0;
+         drawNameInput(name);
+         waitReleasedGameOverTitle(&phase, &frame);
+         if (len >= HIGH_SCORE_NAME_LEN)
+            break;
+      }
+   }
+   insertHighScore(position, name, scoreText);
+   saveHighScores();
+}
+
+static void waitForGameOverDismiss(void) {
+   u8 phase;
+   u8 frame;
+   phase = 0;
+   frame = 0;
+   waitReleasedGameOverTitle(&phase, &frame);
+   while (1) {
+      cpct_waitVSYNC();
+      tickGameOverTitle(&phase, &frame);
+      cpct_scanKeyboard_f();
+      if (anyInputPressed())
+         break;
+   }
+   waitReleased();
 }
 
 #ifndef MENU_CODE_OVERLAY
@@ -1030,6 +1370,7 @@ static void startGame(void) {
    u8 oldRot;
    u8 changed;
    u8 cleared;
+   u8 scorePosition;
    controlMode = menu();
    waitReleased();
    resetInputState();
@@ -1084,23 +1425,13 @@ static void startGame(void) {
       music_play_frame();
    }
    music_stop();
-   cpct_clearScreen(cellPattern[0]);
-   actions = 0;
-   changed = 0;
-   drawGameOverTitle(actions);
-   drawText(27, 112, TXT_PRESS_ANY_KEY, 9);
-   waitReleased();
-   while (!cpct_isAnyKeyPressed_f()) {
-      cpct_waitVSYNC();
-      if (++changed >= GAME_OVER_COLOUR_FRAMES) {
-         changed = 0;
-         if (++actions >= 15)
-            actions = 0;
-         drawGameOverTitle(actions);
-      }
-      cpct_scanKeyboard_f();
+   scorePosition = highScoreInsertPosition(scoreText);
+   drawGameOverScoreboard();
+   if (scorePosition != HIGH_SCORE_NONE) {
+      enterHighScoreName(scorePosition);
+      drawGameOverScoreboard();
    }
-   waitReleased();
+   waitForGameOverDismiss();
 }
 
 void main(void) {
@@ -1114,6 +1445,7 @@ void main(void) {
 #ifdef OVERLAY_SPLASH
    loadRuntimeFontOverlay();
 #endif
+   loadHighScores();
    while (1)
       startGame();
 }

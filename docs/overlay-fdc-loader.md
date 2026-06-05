@@ -1,6 +1,6 @@
 # CPC Direct-FDC Overlay Loader Notes
 
-These notes capture the reusable model from Tetris v0.6 for future CPC games.
+These notes capture the reusable model from Tetris v0.7 for future CPC games.
 
 ## Design Goal
 
@@ -17,11 +17,12 @@ Sector IDs per track: C1 C6 C2 C7 C3 C8 C4 C9 C5
 Sector size:          512 bytes
 ```
 
-Current Tetris v0.6 hidden-sector layout:
+Current Tetris v0.7 hidden-sector layout:
 
 ```text
-Track 20-21  resident game payload       -> 0x1000
-Track 22-25  gameplay screen overlay     -> 0xC000
+Track 20-22  resident game payload       -> 0x1000
+Track 23-26  gameplay screen overlay     -> 0xC000
+Track 27     high-score sector           -> 0x4E00
 Track 30-33  splash image + title music  -> 0x5000
 Track 34     gameplay music              -> 0x9400
 Track 35     runtime font/text/tables    -> 0x5000
@@ -56,6 +57,8 @@ Public entry points:
 ```asm
 _overlay_load_initial_segments
 _overlay_load_gameplay_screen
+_overlay_load_high_scores
+_overlay_save_high_scores
 _overlay_load_runtime_font
 ```
 
@@ -68,8 +71,10 @@ Runtime segments are described as:
 .db sector_count
 ```
 
-The loader restarts the motor/recalibrate path for each runtime overlay load and
-stops the motor after a successful segment load.
+The loader restarts the motor/recalibrate path for each runtime overlay load or
+store and stops the motor after the operation. Runtime high-score reads are
+fatal on disk/FDC failure; high-score saves are non-fatal and return after the
+attempt.
 
 ## FDC Access Pattern
 
@@ -85,6 +90,7 @@ Implemented commands:
 - `0x0F` seek
 - `0x08` sense interrupt status
 - `0x46` read data, MFM
+- `0x45` write data, MFM
 
 Important behavior discovered during testing:
 
@@ -95,6 +101,9 @@ Important behavior discovered during testing:
   corrected.
 - Reading sectors works reliably with fixed track/sector ordering once seek
   polling and command/result byte timing are correct.
+- Writing sectors is timing-sensitive. The v0.7 high-score save path keeps the
+  transfer loop tight by streaming from `DE` with a 512-byte `HL` counter while
+  interrupts are disabled.
 
 ## Overlay Rules For Future Games
 
@@ -107,13 +116,16 @@ Important behavior discovered during testing:
 - Leave stack safety below `0xBFF0`, or deliberately move the stack if a future
   memory map requires it.
 - If an overlay grows, increase its sector count in the build script. The build
-  pads overlays and fails if the actual binary exceeds the reserved size.
+  pads overlays and fails if fixed hidden-sector regions overlap.
+- Keep persistent data sectors distinct from read-only overlays. In v0.7, the
+  high-score sector is isolated at track 27 between gameplay screen art and
+  splash/title data.
 
 ## Current Reusable Scripts
 
-- `tools\build_overlay_dsk.ps1`: official Tetris v0.6 overlay DSK builder.
+- `tools\build_overlay_dsk.ps1`: official Tetris v0.7 overlay DSK builder.
 - `tools\build_fdc_diagnostic_dsk.ps1`: single-track FDC diagnostic disk.
 - `tools\overlay_sector_loader_direct_fdc.s`: direct-FDC boot loader template.
 - `tools\runtime_overlay_loader.s`: resident runtime overlay loader template.
 - `tools\menu_overlay.c`: historical example of C code compiled as a callable
-  overlay. The v0.6 menu code is resident to remove the return-to-menu delay.
+  overlay. The v0.6+ menu code is resident to remove the return-to-menu delay.

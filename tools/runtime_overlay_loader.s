@@ -1,4 +1,4 @@
-; Resident hidden-sector overlay loader for the DSK-only v0.5 build.
+; Resident hidden-sector overlay loader for the DSK-only build.
 ; This path uses the FDC directly, so runtime overlays can be loaded after
 ; CPCtelera has disabled firmware/AMSDOS.
 
@@ -9,8 +9,11 @@ GAMEPLAY_MUSIC_DEST    = #0x9400
 GAMEPLAY_MUSIC_TRACK   = #34
 GAMEPLAY_MUSIC_SECTORS = #2
 GAMEPLAY_SCREEN_DEST   = #0xC000
-GAMEPLAY_SCREEN_TRACK  = #22
+GAMEPLAY_SCREEN_TRACK  = #23
 GAMEPLAY_SCREEN_SECTORS = #32
+HIGH_SCORE_DEST        = #0x4E00
+HIGH_SCORE_TRACK       = #27
+HIGH_SCORE_SECTORS     = #1
 RUNTIME_FONT_DEST      = #0x5000
 RUNTIME_FONT_TRACK     = #35
 RUNTIME_FONT_SECTORS   = #2
@@ -39,6 +42,12 @@ gameplay_screen_segment:
    .db #GAMEPLAY_SCREEN_TRACK
    .db #0
    .db #GAMEPLAY_SCREEN_SECTORS
+
+high_score_segment:
+   .dw #HIGH_SCORE_DEST
+   .db #HIGH_SCORE_TRACK
+   .db #0
+   .db #HIGH_SCORE_SECTORS
 
 runtime_font_segment:
    .dw #RUNTIME_FONT_DEST
@@ -70,6 +79,8 @@ sector_table:
 
 .globl _overlay_load_initial_segments
 .globl _overlay_load_gameplay_screen
+.globl _overlay_load_high_scores
+.globl _overlay_save_high_scores
 .globl _overlay_load_runtime_font
 
 _overlay_load_initial_segments::
@@ -99,6 +110,37 @@ _overlay_load_gameplay_screen::
    ld hl,#gameplay_screen_segment
    call load_segment
    jp nc,overlay_sector_error
+   call fdc_stop
+
+   pop iy
+   pop ix
+   ret
+
+_overlay_load_high_scores::
+   push ix
+   push iy
+
+   call init_fdc_loader
+   jp nc,overlay_recal_error
+   ld hl,#high_score_segment
+   call load_segment
+   jp nc,overlay_sector_error
+   call fdc_stop
+
+   pop iy
+   pop ix
+   ret
+
+_overlay_save_high_scores::
+   push ix
+   push iy
+
+   call init_fdc_loader
+   jr nc,save_high_scores_done
+   ld hl,#high_score_segment
+   call store_segment
+
+save_high_scores_done:
    call fdc_stop
 
    pop iy
@@ -197,6 +239,71 @@ sector_advanced:
    dec a
    ld (current_sectors_left),a
    jr load_loop
+
+store_segment:
+   ld e,(hl)
+   inc hl
+   ld d,(hl)
+   inc hl
+   push hl
+   ex de,hl
+   ld (current_dest),hl
+   pop hl
+   ld a,(hl)
+   inc hl
+   ld (current_track),a
+   ld a,(hl)
+   inc hl
+   ld (current_sector_index),a
+   ld a,(hl)
+   ld (current_sectors_left),a
+
+store_loop:
+   ld a,(current_sectors_left)
+   or a
+   jr nz,store_next_sector
+   scf
+   ret
+
+store_next_sector:
+   call ensure_current_track
+   ret nc
+
+   ld a,(current_sector_index)
+   ld e,a
+   ld d,#0
+   ld hl,#sector_table
+   add hl,de
+   ld a,(hl)
+   ld (current_sector_id),a
+
+   call fdc_write_current_sector
+   ret nc
+
+   ld hl,(current_dest)
+   ld de,#0x0200
+   add hl,de
+   ld (current_dest),hl
+
+   ld a,(current_sector_index)
+   inc a
+   cp #9
+   jr c,store_sector_index_after_write
+   xor a
+   ld (current_sector_index),a
+   ld a,(current_track)
+   inc a
+   ld (current_track),a
+   jr write_sector_advanced
+
+store_sector_index_after_write:
+   ld (current_sector_index),a
+
+write_sector_advanced:
+   ld a,(current_sectors_left)
+   dec a
+   ld (current_sectors_left),a
+   jr store_loop
 
 ensure_current_track:
    ld a,(current_track)
@@ -502,6 +609,68 @@ fdc_check_read_results:
 read_result_error:
    or a
    ret
+
+fdc_write_current_sector:
+   ld a,#0x45
+   call fdc_write_byte
+   ret nc
+   xor a
+   call fdc_write_byte
+   ret nc
+   ld a,(current_track)
+   call fdc_write_byte
+   ret nc
+   xor a
+   call fdc_write_byte
+   ret nc
+   ld a,(current_sector_id)
+   call fdc_write_byte
+   ret nc
+   ld a,#0x02
+   call fdc_write_byte
+   ret nc
+   ld a,(current_sector_id)
+   call fdc_write_byte
+   ret nc
+   ld a,#0x2A
+   call fdc_write_byte
+   ret nc
+   ld a,#0xFF
+   call fdc_write_byte
+   ret nc
+
+   ld de,(current_dest)
+   ld hl,#0x0200
+   ld bc,#0xFB7E
+   call save_and_disable_interrupts
+
+write_data_wait:
+   in a,(c)
+   jp p,write_data_wait
+   bit 6,a
+   jr nz,write_data_result
+   inc c
+   ld a,(de)
+   out (c),a
+   dec c
+   inc de
+   dec hl
+   ld a,h
+   or l
+   jr nz,write_data_wait
+   jr write_data_end
+
+write_data_result:
+   call restore_interrupts
+   call fdc_read_results
+   ret nc
+   jp fdc_check_read_results
+
+write_data_end:
+   call restore_interrupts
+   call fdc_read_results
+   ret nc
+   jp fdc_check_read_results
 
 verify_runtime_font:
    ld a,(hl)

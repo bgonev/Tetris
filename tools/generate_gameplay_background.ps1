@@ -284,6 +284,17 @@ for ($y = 0; $y -lt $height; $y++) {
 }
 $scaled.Dispose()
 
+# Try the dome with green glass while keeping the rest of the mock-derived
+# background unchanged. Coordinates are MODE 0 logical pixels.
+for ($y = 8; $y -le 50; $y++) {
+    for ($x = 124; $x -le 152; $x++) {
+        $offset = $y * $width + $x
+        if ($indexes[$offset] -eq 3) {
+            $indexes[$offset] = 5
+        }
+    }
+}
+
 # Rebuild the critical live-game areas at CPC resolution so the board and HUD
 # remain readable even if the downscaled mock has thin details.
 Fill-Rect $indexes 0 0 116 13 0
