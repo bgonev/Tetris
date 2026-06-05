@@ -1,6 +1,6 @@
 # CPC Direct-FDC Overlay Loader Notes
 
-These notes capture the reusable model from Tetris v0.5 for future CPC games.
+These notes capture the reusable model from Tetris v0.6 for future CPC games.
 
 ## Design Goal
 
@@ -17,14 +17,14 @@ Sector IDs per track: C1 C6 C2 C7 C3 C8 C4 C9 C5
 Sector size:          512 bytes
 ```
 
-Current Tetris v0.5 hidden-sector layout:
+Current Tetris v0.6 hidden-sector layout:
 
 ```text
 Track 20-21  resident game payload       -> 0x1000
+Track 22-25  gameplay screen overlay     -> 0xC000
 Track 30-33  splash image + title music  -> 0x5000
 Track 34     gameplay music              -> 0x9400
 Track 35     runtime font/text/tables    -> 0x5000
-Track 36     menu code overlay           -> 0x5400
 ```
 
 The catalog-visible `TETRIS.BIN` is only the boot file. Everything else is read
@@ -36,7 +36,7 @@ from fixed sectors by the loader.
 
 Responsibilities:
 
-- Print `Sit down tightly while the game loads..`
+- Print `For my daughter Marija`.
 - Set stack to `0xBFF0`.
 - Turn on the drive motor through `0xFA7E`.
 - Recalibrate and seek using the FDC command path.
@@ -55,9 +55,8 @@ Public entry points:
 
 ```asm
 _overlay_load_initial_segments
+_overlay_load_gameplay_screen
 _overlay_load_runtime_font
-_overlay_load_menu_code
-_overlay_run_menu_code
 ```
 
 Runtime segments are described as:
@@ -112,8 +111,9 @@ Important behavior discovered during testing:
 
 ## Current Reusable Scripts
 
-- `tools\build_overlay_dsk.ps1`: official Tetris v0.5 overlay DSK builder.
+- `tools\build_overlay_dsk.ps1`: official Tetris v0.6 overlay DSK builder.
 - `tools\build_fdc_diagnostic_dsk.ps1`: single-track FDC diagnostic disk.
 - `tools\overlay_sector_loader_direct_fdc.s`: direct-FDC boot loader template.
 - `tools\runtime_overlay_loader.s`: resident runtime overlay loader template.
-- `tools\menu_overlay.c`: example of C code compiled as a callable overlay.
+- `tools\menu_overlay.c`: historical example of C code compiled as a callable
+  overlay. The v0.6 menu code is resident to remove the return-to-menu delay.

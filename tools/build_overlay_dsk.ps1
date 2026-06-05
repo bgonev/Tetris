@@ -2,11 +2,10 @@ param(
     [string]$OutputDsk = "dist\TETRIS.DSK",
     [int]$LoaderLoadAddress = 0x0800,
     [int]$PayloadStartTrack = 20,
+    [int]$GameplayScreenStartTrack = 22,
     [int]$SplashAddress = 0x5000,
     [int]$SplashStartTrack = 30,
     [int]$GameplayMusicAddress = 0x9400,
-    [int]$MenuCodeAddress = 0x5400,
-    [int]$MenuCodeSectorCount = 3,
     [switch]$DirectFdcBoot,
     [switch]$AmsdosBoot,
     [switch]$SkipGameBuild
@@ -19,7 +18,7 @@ $LocalBash = Join-Path $Root.Path "toolchains\cygwin64\bin\bash.exe"
 $SharedCpct = Join-Path $Root.Path "..\cpctelera"
 $SectorIds = @(0xC1, 0xC6, 0xC2, 0xC7, 0xC3, 0xC8, 0xC4, 0xC9, 0xC5)
 $SectorSize = 512
-$ReleaseVersion = "v0.5"
+$ReleaseVersion = "v0.6"
 
 function Set-WordLE {
     param(
@@ -287,12 +286,12 @@ function New-RuntimeOverlayLoaderSource {
         [Parameter(Mandatory = $true)][int]$GameplayAddress,
         [Parameter(Mandatory = $true)][int]$GameplayTrack,
         [Parameter(Mandatory = $true)][int]$GameplaySectorCount,
+        [Parameter(Mandatory = $true)][int]$GameplayScreenAddress,
+        [Parameter(Mandatory = $true)][int]$GameplayScreenTrack,
+        [Parameter(Mandatory = $true)][int]$GameplayScreenSectorCount,
         [Parameter(Mandatory = $true)][int]$RuntimeFontAddress,
         [Parameter(Mandatory = $true)][int]$RuntimeFontTrack,
-        [Parameter(Mandatory = $true)][int]$RuntimeFontSectorCount,
-        [Parameter(Mandatory = $true)][int]$MenuCodeAddress,
-        [Parameter(Mandatory = $true)][int]$MenuCodeTrack,
-        [Parameter(Mandatory = $true)][int]$MenuCodeSectorCount
+        [Parameter(Mandatory = $true)][int]$RuntimeFontSectorCount
     )
 
     $source = Get-Content -Raw $TemplatePath
@@ -302,12 +301,12 @@ function New-RuntimeOverlayLoaderSource {
     $source = Set-AsmEquValue $source "GAMEPLAY_MUSIC_DEST" $GameplayAddress
     $source = Set-AsmEquValue $source "GAMEPLAY_MUSIC_TRACK" $GameplayTrack
     $source = Set-AsmEquValue $source "GAMEPLAY_MUSIC_SECTORS" $GameplaySectorCount
+    $source = Set-AsmEquValue $source "GAMEPLAY_SCREEN_DEST" $GameplayScreenAddress
+    $source = Set-AsmEquValue $source "GAMEPLAY_SCREEN_TRACK" $GameplayScreenTrack
+    $source = Set-AsmEquValue $source "GAMEPLAY_SCREEN_SECTORS" $GameplayScreenSectorCount
     $source = Set-AsmEquValue $source "RUNTIME_FONT_DEST" $RuntimeFontAddress
     $source = Set-AsmEquValue $source "RUNTIME_FONT_TRACK" $RuntimeFontTrack
     $source = Set-AsmEquValue $source "RUNTIME_FONT_SECTORS" $RuntimeFontSectorCount
-    $source = Set-AsmEquValue $source "MENU_CODE_DEST" $MenuCodeAddress
-    $source = Set-AsmEquValue $source "MENU_CODE_TRACK" $MenuCodeTrack
-    $source = Set-AsmEquValue $source "MENU_CODE_SECTORS" $MenuCodeSectorCount
     Set-Content -Path $OutputPath -Value $source -Encoding ascii
 }
 
@@ -459,7 +458,7 @@ function Add-PayloadWord {
 
 function Get-OverlayTextEntries {
     return @(
-        [PSCustomObject]@{ Name = "TXT_MENU_TITLE"; Text = "Z32X TETRIS V.0.4" },
+        [PSCustomObject]@{ Name = "TXT_MENU_TITLE"; Text = "Z32X TETRIS V.0.6" },
         [PSCustomObject]@{ Name = "TXT_GAME_OVER"; Text = "GAME OVER" },
         [PSCustomObject]@{ Name = "TXT_BLANK8"; Text = "        " },
         [PSCustomObject]@{ Name = "TXT_BLANK16"; Text = "                " },
@@ -609,9 +608,9 @@ function New-RuntimeOverlayLayout {
         [Parameter(Mandatory = $true)][int]$SplashAddress,
         [Parameter(Mandatory = $true)][int]$SplashStartTrack,
         [Parameter(Mandatory = $true)][int]$GameplayMusicAddress,
-        [Parameter(Mandatory = $true)][int]$RuntimeFontLength,
-        [Parameter(Mandatory = $true)][int]$MenuCodeAddress,
-        [Parameter(Mandatory = $true)][int]$MenuCodeSectorCount
+        [Parameter(Mandatory = $true)][int]$GameplayScreenStartTrack,
+        [Parameter(Mandatory = $true)][int]$GameplayScreenLength,
+        [Parameter(Mandatory = $true)][int]$RuntimeFontLength
     )
 
     $splashTitleLength = $SplashImageLength + $MusicOverlayInfo.TitleMusicLength
@@ -620,14 +619,14 @@ function New-RuntimeOverlayLayout {
     $gameplayMusicSectorCount = [int][Math]::Ceiling($MusicOverlayInfo.GameplayMusicLength / $SectorSize)
     $gameplayMusicTrack = $splashTitleEndTrack + 1
     $gameplayMusicEndTrack = [int]($gameplayMusicTrack + [Math]::Floor(($gameplayMusicSectorCount - 1) / $SectorIds.Count))
+    $gameplayScreenSectorCount = [int][Math]::Ceiling($GameplayScreenLength / $SectorSize)
+    $gameplayScreenEndTrack = [int]($GameplayScreenStartTrack + [Math]::Floor(($gameplayScreenSectorCount - 1) / $SectorIds.Count))
     $runtimeFontSectorCount = [int][Math]::Ceiling($runtimeFontLength / $SectorSize)
     $runtimeFontTrack = $gameplayMusicEndTrack + 1
     $runtimeFontEndTrack = [int]($runtimeFontTrack + [Math]::Floor(($runtimeFontSectorCount - 1) / $SectorIds.Count))
-    $menuCodeTrack = $runtimeFontEndTrack + 1
-    $menuCodeEndTrack = [int]($menuCodeTrack + [Math]::Floor(($MenuCodeSectorCount - 1) / $SectorIds.Count))
 
-    if ($menuCodeEndTrack -gt 39) {
-        throw "Menu code hidden sector would need track $menuCodeEndTrack, past the standard 40-track DSK range."
+    if ($gameplayScreenEndTrack -ge $SplashStartTrack) {
+        throw "Gameplay screen hidden sectors would overlap the splash/title segment."
     }
     if (($SplashAddress + $splashTitleLength) -gt $GameplayMusicAddress) {
         throw ("Gameplay music address 0x{0:X4} overlaps splash/title overlay ending at 0x{1:X4}." -f $GameplayMusicAddress, ($SplashAddress + $splashTitleLength - 1))
@@ -636,7 +635,7 @@ function New-RuntimeOverlayLayout {
         throw ("Gameplay music address 0x{0:X4} is too close to firmware RAM." -f $GameplayMusicAddress)
     }
 
-    New-RuntimeOverlayLoaderSource "tools\runtime_overlay_loader.s" "src\overlay\runtime_overlay_loader.generated.s" $SplashAddress $SplashStartTrack $splashTitleSectorCount $GameplayMusicAddress $gameplayMusicTrack $gameplayMusicSectorCount $SplashAddress $runtimeFontTrack $runtimeFontSectorCount $MenuCodeAddress $menuCodeTrack $MenuCodeSectorCount
+    New-RuntimeOverlayLoaderSource "tools\runtime_overlay_loader.s" "src\overlay\runtime_overlay_loader.generated.s" $SplashAddress $SplashStartTrack $splashTitleSectorCount $GameplayMusicAddress $gameplayMusicTrack $gameplayMusicSectorCount 0xC000 $GameplayScreenStartTrack $gameplayScreenSectorCount $SplashAddress $runtimeFontTrack $runtimeFontSectorCount
 
     return [PSCustomObject]@{
         SplashTitleAddress = $SplashAddress
@@ -649,15 +648,16 @@ function New-RuntimeOverlayLayout {
         GameplayMusicLength = $MusicOverlayInfo.GameplayMusicLength
         GameplayMusicSectorCount = $gameplayMusicSectorCount
         GameplayMusicEndTrack = $gameplayMusicEndTrack
+        GameplayScreenAddress = 0xC000
+        GameplayScreenTrack = $GameplayScreenStartTrack
+        GameplayScreenLength = $GameplayScreenLength
+        GameplayScreenSectorCount = $gameplayScreenSectorCount
+        GameplayScreenEndTrack = $gameplayScreenEndTrack
         RuntimeFontAddress = $SplashAddress
         RuntimeFontTrack = $runtimeFontTrack
         RuntimeFontLength = $runtimeFontLength
         RuntimeFontSectorCount = $runtimeFontSectorCount
         RuntimeFontEndTrack = $runtimeFontEndTrack
-        MenuCodeAddress = $MenuCodeAddress
-        MenuCodeTrack = $menuCodeTrack
-        MenuCodeSectorCount = $MenuCodeSectorCount
-        MenuCodeEndTrack = $menuCodeEndTrack
     }
 }
 
@@ -879,6 +879,10 @@ try {
         throw "Could not find local Cygwin bash at $LocalBash."
     }
 
+    $defaultOutputDsk = [System.IO.Path]::GetFullPath("dist\TETRIS.DSK")
+    $actualOutputDsk = [System.IO.Path]::GetFullPath($OutputDsk)
+    $isDefaultReleaseOutput = $actualOutputDsk -eq $defaultOutputDsk
+
     New-Item -ItemType Directory -Force -Path "dist" | Out-Null
     Remove-Item -Force -ErrorAction SilentlyContinue "dist\TETRIS.BAS", "dist\TETRIS-$ReleaseVersion.BAS"
     Remove-Item -Force -ErrorAction SilentlyContinue "dist\TETRIS.CDT", "dist\TETRIS-$ReleaseVersion.CDT"
@@ -900,9 +904,14 @@ try {
         New-Item -ItemType Directory -Force -Path "obj\overlay" | Out-Null
         $musicOverlayInfo = New-OverlayMusicSources "src\music.s" "src\overlay\music_overlay.generated.s" "obj\overlay\title_music_overlay.generated.s" "obj\overlay\gameplay_music_overlay.generated.s" $titleMusicAddress $GameplayMusicAddress
         $runtimeTextInfo = New-RuntimeTextPayload "obj\overlay\runtime_font_overlay.bin" "src\overlay\overlay_text.generated.h" "src\main.c" $SplashAddress
-        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $runtimeTextInfo.Length $MenuCodeAddress $MenuCodeSectorCount
+        & powershell -ExecutionPolicy Bypass -File ".\tools\generate_gameplay_background.ps1"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Gameplay background generation failed with exit code $LASTEXITCODE."
+        }
+        $gameplayScreenLength = (Get-Item "obj\overlay\gameplay_screen.bin").Length
+        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $GameplayScreenStartTrack $gameplayScreenLength $runtimeTextInfo.Length
 
-        $buildCmd = "cd '$cygRoot' && export CPCT_PATH='$cygCpct' && export PATH='$cygCpct/tools/sdcc-3.6.8-r9946/bin:$cygCpct/tools/iDSK-0.13/bin:$cygCpct/tools/hex2bin-2.0/bin:$cygCpct/tools/2cdt/bin:$cygCpct/tools/dskgen/bin':`$PATH && make OVERLAY_SPLASH=1 MENU_CODE_OVERLAY=1"
+        $buildCmd = "cd '$cygRoot' && export CPCT_PATH='$cygCpct' && export PATH='$cygCpct/tools/sdcc-3.6.8-r9946/bin:$cygCpct/tools/iDSK-0.13/bin:$cygCpct/tools/hex2bin-2.0/bin:$cygCpct/tools/2cdt/bin:$cygCpct/tools/dskgen/bin':`$PATH && make OVERLAY_SPLASH=1"
         & $LocalBash -lc $buildCmd
         if ($LASTEXITCODE -ne 0) {
             throw "CPCtelera make failed with exit code $LASTEXITCODE."
@@ -912,7 +921,12 @@ try {
         New-Item -ItemType Directory -Force -Path "obj\overlay" | Out-Null
         $musicOverlayInfo = New-OverlayMusicSources "src\music.s" "src\overlay\music_overlay.generated.s" "obj\overlay\title_music_overlay.generated.s" "obj\overlay\gameplay_music_overlay.generated.s" $titleMusicAddress $GameplayMusicAddress
         $runtimeTextInfo = New-RuntimeTextPayload "obj\overlay\runtime_font_overlay.bin" "src\overlay\overlay_text.generated.h" "src\main.c" $SplashAddress
-        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $runtimeTextInfo.Length $MenuCodeAddress $MenuCodeSectorCount
+        & powershell -ExecutionPolicy Bypass -File ".\tools\generate_gameplay_background.ps1"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Gameplay background generation failed with exit code $LASTEXITCODE."
+        }
+        $gameplayScreenLength = (Get-Item "obj\overlay\gameplay_screen.bin").Length
+        $overlayLayout = New-RuntimeOverlayLayout $splashImageLength $musicOverlayInfo $SplashAddress $SplashStartTrack $GameplayMusicAddress $GameplayScreenStartTrack $gameplayScreenLength $runtimeTextInfo.Length
     }
 
     $payloadPath = "obj\TETRIS.bin"
@@ -932,14 +946,6 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path "obj\overlay" | Out-Null
-
-    New-MenuOverlayBindings "obj\overlay\menu_overlay_bindings.s" "obj\TETRIS.map" "obj\main.sym"
-    $menuOverlayCmd = "cd '$cygRoot' && export PATH='$cygCpct/tools/sdcc-3.6.8-r9946/bin:$cygCpct/tools/hex2bin-2.0/bin':`$PATH && sdcc -mz80 --no-std-crt0 -I'$cygCpct/src' -Isrc -c tools/menu_overlay.c -o obj/overlay/menu_overlay.rel && sdasz80 -l -o -s obj/overlay/menu_overlay_entry.rel tools/menu_overlay_entry.s && sdasz80 -l -o -s obj/overlay/menu_overlay_bindings.rel obj/overlay/menu_overlay_bindings.s && sdcc -mz80 --no-std-crt0 --code-loc $('0x{0:X4}' -f $MenuCodeAddress) --data-loc 0 obj/overlay/menu_overlay_entry.rel obj/overlay/menu_overlay.rel obj/overlay/menu_overlay_bindings.rel -o obj/overlay/menu_overlay.ihx && hex2bin -p 00 obj/overlay/menu_overlay.ihx"
-    & $LocalBash -lc $menuOverlayCmd
-    if ($LASTEXITCODE -ne 0) {
-        throw "Menu code overlay build failed with exit code $LASTEXITCODE."
-    }
-    $menuOverlayInfo = New-PaddedBinary "obj\overlay\menu_overlay.bin" "obj\overlay\menu_overlay.padded.bin" ($MenuCodeSectorCount * $SectorSize)
 
     $splashSource = Get-Content -Raw "src\splash.s"
     if ($splashSource -notmatch "\.area\s+_DATA") {
@@ -983,6 +989,9 @@ try {
         throw "Generated gameplay music loader sector count does not match assembled overlay size."
     }
     $payloadEndTrack = [int]($PayloadStartTrack + [Math]::Floor(($payloadSectorCount - 1) / $SectorIds.Count))
+    if ($payloadEndTrack -ge $GameplayScreenStartTrack) {
+        throw "Payload sectors $PayloadStartTrack-$payloadEndTrack overlap gameplay screen start track $GameplayScreenStartTrack."
+    }
     if ($payloadEndTrack -ge $SplashStartTrack) {
         throw "Payload sectors $PayloadStartTrack-$payloadEndTrack overlap splash start track $SplashStartTrack."
     }
@@ -1004,8 +1013,10 @@ try {
     }
 
     Copy-Item -Force "obj\overlay\overlay_sector_loader.bin" "obj\overlay\TETRIS.BIN"
-    Write-AmsdosBinary "obj\overlay\overlay_sector_loader.bin" "dist\TETRIS.BIN" $LoaderLoadAddress $LoaderLoadAddress "TETRIS.BIN"
-    Copy-Item -Force "dist\TETRIS.BIN" "dist\TETRIS-$ReleaseVersion.BIN"
+    if ($isDefaultReleaseOutput) {
+        Write-AmsdosBinary "obj\overlay\overlay_sector_loader.bin" "dist\TETRIS.BIN" $LoaderLoadAddress $LoaderLoadAddress "TETRIS.BIN"
+        Copy-Item -Force "dist\TETRIS.BIN" "dist\TETRIS-$ReleaseVersion.BIN"
+    }
     Remove-Item -Force -ErrorAction SilentlyContinue $OutputDsk
 
     $cygOutputDsk = Convert-ToCygwinPath $OutputDsk
@@ -1016,6 +1027,8 @@ try {
     }
 
     $writtenSectorCount = Write-PayloadSectors $OutputDsk $payloadPath $PayloadStartTrack
+    $gameplayScreenPath = "obj\overlay\gameplay_screen.bin"
+    $writtenGameplayScreenSectorCount = Write-PayloadSectors $OutputDsk $gameplayScreenPath $overlayLayout.GameplayScreenTrack
     $writtenSplashSectorCount = Write-PayloadSectors $OutputDsk $splashPath $SplashStartTrack
     $writtenGameplayMusicSectorCount = Write-PayloadSectors $OutputDsk $gameplayMusicPath $overlayLayout.GameplayMusicTrack
     $runtimeFontPath = $runtimeTextInfo.Path
@@ -1023,12 +1036,11 @@ try {
         throw "Generated runtime text/font length does not match overlay layout."
     }
     $writtenRuntimeFontSectorCount = Write-PayloadSectors $OutputDsk $runtimeFontPath $overlayLayout.RuntimeFontTrack
-    $writtenMenuCodeSectorCount = Write-PayloadSectors $OutputDsk $menuOverlayInfo.Path $overlayLayout.MenuCodeTrack
     Test-PayloadSectors $OutputDsk $payloadPath $PayloadStartTrack
+    Test-PayloadSectors $OutputDsk $gameplayScreenPath $overlayLayout.GameplayScreenTrack
     Test-PayloadSectors $OutputDsk $splashPath $SplashStartTrack
     Test-PayloadSectors $OutputDsk $gameplayMusicPath $overlayLayout.GameplayMusicTrack
     Test-PayloadSectors $OutputDsk $runtimeFontPath $overlayLayout.RuntimeFontTrack
-    Test-PayloadSectors $OutputDsk $menuOverlayInfo.Path $overlayLayout.MenuCodeTrack
 
     $endTrack = [int]($PayloadStartTrack + [Math]::Floor(($writtenSectorCount - 1) / $SectorIds.Count))
     $splashEndTrack = [int]($SplashStartTrack + [Math]::Floor(($writtenSplashSectorCount - 1) / $SectorIds.Count))
@@ -1037,19 +1049,24 @@ try {
     Write-Host ("Boot loader template: {0}" -f $bootLoaderTemplate)
     Write-Host ("Loader: load/run 0x{0:X4}; size {1} bytes" -f $LoaderLoadAddress, (Get-Item "obj\overlay\overlay_sector_loader.bin").Length)
     Write-Host ("Payload: load 0x{0:X4}; run 0x{1:X4}; highest 0x{2:X4}; bytes {3}; sectors {4}; tracks {5}-{6}" -f $loadAddress, $runAddress, $highestAddress, $payloadLength, $writtenSectorCount, $PayloadStartTrack, $endTrack)
+    Write-Host ("Runtime gameplay screen overlay: load 0x{0:X4}; bytes {1}; sectors {2}; tracks {3}-{4}" -f $overlayLayout.GameplayScreenAddress, $overlayLayout.GameplayScreenLength, $writtenGameplayScreenSectorCount, $overlayLayout.GameplayScreenTrack, $overlayLayout.GameplayScreenEndTrack)
     Write-Host ("Runtime splash/title overlay: load 0x{0:X4}; bytes {1}; sectors {2}; tracks {3}-{4}" -f $SplashAddress, $splashLength, $writtenSplashSectorCount, $SplashStartTrack, $splashEndTrack)
     Write-Host ("Runtime gameplay music overlay: load 0x{0:X4}; bytes {1}; sectors {2}; tracks {3}-{4}" -f $GameplayMusicAddress, $gameplayMusicDataLength, $writtenGameplayMusicSectorCount, $overlayLayout.GameplayMusicTrack, $gameplayMusicEndTrack)
     Write-Host ("Runtime font/text/tables overlay: load 0x{0:X4}; glyphs at 0x{1:X4}; shapes at 0x{2:X4}; keys at 0x{3:X4}; bytes {4}; sectors {5}; tracks {6}-{7}" -f $overlayLayout.RuntimeFontAddress, $runtimeTextInfo.GlyphAddress, $runtimeTextInfo.ShapesAddress, $runtimeTextInfo.KeyChoicesAddress, $overlayLayout.RuntimeFontLength, $writtenRuntimeFontSectorCount, $overlayLayout.RuntimeFontTrack, $overlayLayout.RuntimeFontEndTrack)
-    Write-Host ("Runtime menu code overlay: load 0x{0:X4}; bytes {1}; padded {2}; sectors {3}; tracks {4}-{5}" -f $overlayLayout.MenuCodeAddress, $menuOverlayInfo.Length, $menuOverlayInfo.PaddedLength, $writtenMenuCodeSectorCount, $overlayLayout.MenuCodeTrack, $overlayLayout.MenuCodeEndTrack)
+    Write-Host "Menu code: resident in main payload"
     Write-Host ("Title music data: load 0x{0:X4}; bytes {1}" -f $musicOverlayInfo.TitleMusicAddress, $musicOverlayInfo.TitleMusicLength)
     Write-Host ("Gameplay music data: load 0x{0:X4}; bytes {1}" -f $musicOverlayInfo.GameplayMusicAddress, $musicOverlayInfo.GameplayMusicLength)
     Write-Host ("Runtime title music bytes: {0}" -f $titleMusicDataLength)
     Write-Host ("Persistent gameplay music bytes: {0}" -f $gameplayMusicDataLength)
-    Copy-IfDifferent $OutputDsk "dist\TETRIS.DSK"
-    Copy-Item -Force $OutputDsk "dist\TETRIS-$ReleaseVersion.DSK"
-    Write-Host ("Release BIN: {0}" -f (Resolve-Path "dist\TETRIS.BIN"))
-    Write-Host ("Release DSK: {0}" -f (Resolve-Path "dist\TETRIS.DSK"))
-    Write-Host ("Versioned DSK: {0}" -f (Resolve-Path "dist\TETRIS-$ReleaseVersion.DSK"))
+    if ($isDefaultReleaseOutput) {
+        Copy-IfDifferent $OutputDsk "dist\TETRIS.DSK"
+        Copy-Item -Force $OutputDsk "dist\TETRIS-$ReleaseVersion.DSK"
+        Write-Host ("Release BIN: {0}" -f (Resolve-Path "dist\TETRIS.BIN"))
+        Write-Host ("Release DSK: {0}" -f (Resolve-Path "dist\TETRIS.DSK"))
+        Write-Host ("Versioned DSK: {0}" -f (Resolve-Path "dist\TETRIS-$ReleaseVersion.DSK"))
+    } else {
+        Write-Host ("Test DSK only; release DSK files were not updated because OutputDsk was {0}" -f $OutputDsk)
+    }
 } finally {
     Pop-Location
 }

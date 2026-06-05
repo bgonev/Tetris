@@ -34,7 +34,7 @@ sector_table:
    .db #0xC1,#0xC6,#0xC2,#0xC7,#0xC3,#0xC8,#0xC4,#0xC9,#0xC5
 
 msg_start:
-   .asciz "Sit down tightly while the game loads.."
+   .asciz "For my daughter Marija"
 msg_recal_error:
    .asciz " FDC"
 msg_sector_error:
@@ -51,6 +51,7 @@ msg_bytes:
 .area _CODE
 
 TXT_OUTPUT      = #0xBB5A
+TXT_SET_CURSOR  = #0xBB75
 LOWEST_USABLE   = #0x1000
 HIGHEST_USABLE  = #0x7FFF
 PAYLOAD_RUN     = #0x2B22
@@ -60,6 +61,9 @@ HW_WHITE        = #0x00
 _loader_start::
    di
    ld sp,#0xBFF0
+   ld h,#10
+   ld l,#13
+   call TXT_SET_CURSOR
    ld hl,#msg_start
    call print_string
    di

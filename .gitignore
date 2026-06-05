@@ -17,3 +17,6 @@ toolchains/
 
 # Generated overlay sources are rebuilt by tools/build_overlay_dsk.ps1.
 /src/overlay/
+
+# Local emulator screenshots used during visual QA.
+/screenshots/

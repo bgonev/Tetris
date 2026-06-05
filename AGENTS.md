@@ -13,9 +13,9 @@ Do not re-clone CPCtelera inside this repo. `cfg/build_config.mk` defaults to
 `CPCT_PATH ?= ../cpctelera`, and the build scripts resolve the shared path
 automatically.
 
-## Preferred v0.5 Build
+## Preferred v0.6 Build
 
-Official v0.5 release build:
+Official v0.6 release build:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\build_overlay_dsk.ps1
@@ -23,10 +23,10 @@ powershell -ExecutionPolicy Bypass -File .\tools\build_overlay_dsk.ps1
 
 Outputs:
 
-- `dist\TETRIS.DSK`: current v0.5 release disk.
-- `dist\TETRIS-v0.5.DSK`: versioned v0.5 release disk.
+- `dist\TETRIS.DSK`: current v0.6 release disk.
+- `dist\TETRIS-v0.6.DSK`: versioned v0.6 release disk.
 - `dist\TETRIS.BIN`: AMSDOS-headered direct-FDC boot file for reference.
-- `dist\TETRIS-v0.5.BIN`: versioned direct-FDC boot file.
+- `dist\TETRIS-v0.6.BIN`: versioned direct-FDC boot file.
 
 Use:
 
@@ -34,30 +34,31 @@ Use:
 RUN"TETRIS.BIN"
 ```
 
-v0.5 is DSK-only. It uses hidden sectors and direct FDC access, so the overlay
+v0.6 is DSK-only. It uses hidden sectors and direct FDC access, so the overlay
 strategy does not apply to CDT. Keep v0.4 as the monolithic/CDT-friendly build.
 
-## Current v0.5 Overlay Layout
+## Current v0.6 Overlay Layout
 
 - Boot loader: load/run `0x0800`, direct FDC, catalog filename `TETRIS.BIN`.
-- Resident payload: load `0x1000`, latest highest address `0x2E1C`.
+- Resident payload: load `0x1000`, latest highest address about `0x3217`.
 - Payload sectors: tracks 20-21.
+- Gameplay screen overlay: load `0xC000`, tracks 22-25.
 - Splash/title overlay: load `0x5000`, tracks 30-33.
 - Gameplay music overlay: load `0x9400`, track 34.
 - Runtime font/text/tables overlay: load `0x5000`, track 35.
-- Menu code overlay: load `0x5400`, track 36, currently 3 sectors.
+- Menu/redefine-key code: resident in the main payload, not an overlay.
 - Screen RAM: `0xC000-0xFFFF`.
 
 Current practical memory planning:
 
-- About 7 KB safe resident growth below the overlay workspace.
-- About 12 KB continuous overlay room immediately available below gameplay
-  music.
-- About 20-25 KB available with deliberate overlay reuse.
-- About 35 KB theoretically usable across split regions if low/high RAM is
+- About 5.5 KB safe resident growth remains below the overlay workspace.
+- Menu return from game over is immediate because the menu code is resident.
+- Stage-specific data should still go into overlays when possible.
+- About 20-25 KB can be used with deliberate overlay reuse.
+- About 35 KB is theoretically usable across split regions if low/high RAM is
   managed carefully.
 
-## Important v0.5 Loader Facts
+## Important v0.6 Loader Facts
 
 - Boot and runtime loaders use FDC motor control at `0xFA7E`.
 - FDC main status is read at `0xFB7E`; data is read/written at `0xFB7F`.
@@ -75,8 +76,9 @@ Current practical memory planning:
 - 10x20 Tetris playfield.
 - `CELL_WB 2`, `CELL_H 8`, `BOARD_X 10`, `BOARD_Y 16`, `PANEL_X 44`.
 - Solid CPCtelera tile sprites for gameplay blocks.
-- Compact MODE 0 sprite font for menu, side panel, game over, and dedication.
-- Gameplay screen includes `for my daughter Marija` at the bottom.
+- Mock-inspired gameplay screen generated from `assets\new_gameplay_layout.jpg`.
+- Compact MODE 0 sprite font for menu, side panel, game over, and gameplay labels.
+- Loader message is centered as `For my daughter Marija`.
 - Splash screen includes small credit text: `Made by Bgonev, 2026`.
 - Splash waits for any key or joystick fire before menu.
 - Menu options: keyboard, joystick, redefine keys.
@@ -95,8 +97,10 @@ Current practical memory planning:
   `cpct_setVideoMemoryOffset(0)`, and `cpct_setVideoMode(0)`.
 - Improved block ratio/resolution to solid MODE 0 block sprites.
 - Added line-clear clink as a short AY noise accent without using firmware SOUND.
-- Moved splash/title data, music tables, runtime text/tables, and menu code into
-  overlays for v0.5.
+- Moved splash/title data, gameplay screen art, music tables, and runtime
+  text/tables into overlays.
+- Moved menu/redefine-key code back into resident RAM for v0.6 to remove the
+  game-over to menu reload delay.
 
 ## Music / Sound
 
@@ -120,14 +124,14 @@ as original/inspired alternatives, not exact note-for-note reproductions.
 - `src/main.c`: game logic, graphics, input, splash flow, gameplay loop.
 - `src/music.s`: direct AY music and clink SFX source.
 - `src/splash.s`, `src/splash.h`: generated MODE 0 splash asset.
-- `tools/build_overlay_dsk.ps1`: official v0.5 overlay DSK release builder.
+- `tools/build_overlay_dsk.ps1`: official v0.6 overlay DSK release builder.
 - `tools/build_cpc_release.ps1`: older non-overlay release builder.
 - `tools/overlay_sector_loader_direct_fdc.s`: direct-FDC boot loader template.
 - `tools/runtime_overlay_loader.s`: direct-FDC runtime overlay loader template.
-- `tools/menu_overlay.c`: menu/redefine-key code overlay.
+- `tools/generate_gameplay_background.ps1`: gameplay screen overlay generator.
 - `tools/build_fdc_diagnostic_dsk.ps1`: FDC diagnostic disk builder.
 - `docs/overlay-fdc-loader.md`: reusable overlay/FDC method notes.
-- `docs/session-context-v0.5.md`: future-session context.
+- `docs/session-context-v0.6.md`: future-session context.
 
 ## WinAPE Usage
 

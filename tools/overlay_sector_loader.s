@@ -38,7 +38,7 @@ sector_table:
    .db #0xC1,#0xC6,#0xC2,#0xC7,#0xC3,#0xC8,#0xC4,#0xC9,#0xC5
 
 msg_start:
-   .asciz "Sit down tightly while the game loads.."
+   .asciz "For my daughter Marija"
 msg_find_error:
    .asciz " RSX"
 msg_sector_error:
@@ -47,6 +47,7 @@ msg_sector_error:
 .area _CODE
 
 TXT_OUTPUT      = #0xBB5A
+TXT_SET_CURSOR  = #0xBB75
 KL_INIT_BACK    = #0xBCCE
 KL_FIND_COMMAND = #0xBCD4
 
@@ -58,6 +59,9 @@ PAYLOAD_RUN     = #0x2B22
 _loader_start::
    di
    ld sp,#0xBFF0
+   ld h,#10
+   ld l,#13
+   call TXT_SET_CURSOR
    ld hl,#msg_start
    call print_string
 

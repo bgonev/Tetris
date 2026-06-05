@@ -8,12 +8,12 @@ SPLASH_TITLE_SECTORS   = #32
 GAMEPLAY_MUSIC_DEST    = #0x9400
 GAMEPLAY_MUSIC_TRACK   = #34
 GAMEPLAY_MUSIC_SECTORS = #2
+GAMEPLAY_SCREEN_DEST   = #0xC000
+GAMEPLAY_SCREEN_TRACK  = #22
+GAMEPLAY_SCREEN_SECTORS = #32
 RUNTIME_FONT_DEST      = #0x5000
 RUNTIME_FONT_TRACK     = #35
 RUNTIME_FONT_SECTORS   = #2
-MENU_CODE_DEST         = #0x5400
-MENU_CODE_TRACK        = #36
-MENU_CODE_SECTORS      = #3
 
 HW_RED                 = #0x1C
 HW_PURPLE              = #0x05
@@ -34,17 +34,17 @@ gameplay_music_segment:
    .db #0
    .db #GAMEPLAY_MUSIC_SECTORS
 
+gameplay_screen_segment:
+   .dw #GAMEPLAY_SCREEN_DEST
+   .db #GAMEPLAY_SCREEN_TRACK
+   .db #0
+   .db #GAMEPLAY_SCREEN_SECTORS
+
 runtime_font_segment:
    .dw #RUNTIME_FONT_DEST
    .db #RUNTIME_FONT_TRACK
    .db #0
    .db #RUNTIME_FONT_SECTORS
-
-menu_code_segment:
-   .dw #MENU_CODE_DEST
-   .db #MENU_CODE_TRACK
-   .db #0
-   .db #MENU_CODE_SECTORS
 
 current_dest:
    .dw #0x0000
@@ -69,9 +69,8 @@ sector_table:
 .area _CODE
 
 .globl _overlay_load_initial_segments
+.globl _overlay_load_gameplay_screen
 .globl _overlay_load_runtime_font
-.globl _overlay_load_menu_code
-.globl _overlay_run_menu_code
 
 _overlay_load_initial_segments::
    push ix
@@ -83,6 +82,21 @@ _overlay_load_initial_segments::
    call load_segment
    jp nc,overlay_sector_error
    ld hl,#gameplay_music_segment
+   call load_segment
+   jp nc,overlay_sector_error
+   call fdc_stop
+
+   pop iy
+   pop ix
+   ret
+
+_overlay_load_gameplay_screen::
+   push ix
+   push iy
+
+   call init_fdc_loader
+   jp nc,overlay_recal_error
+   ld hl,#gameplay_screen_segment
    call load_segment
    jp nc,overlay_sector_error
    call fdc_stop
@@ -107,25 +121,6 @@ _overlay_load_runtime_font::
 
    pop iy
    pop ix
-   ret
-
-_overlay_load_menu_code::
-   push ix
-   push iy
-
-   call init_fdc_loader
-   jp nc,overlay_recal_error
-   ld hl,#menu_code_segment
-   call load_segment
-   jp nc,overlay_sector_error
-   call fdc_stop
-
-   pop iy
-   pop ix
-   ret
-
-_overlay_run_menu_code::
-   call MENU_CODE_DEST
    ret
 
 init_fdc_loader:

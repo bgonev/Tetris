@@ -3,7 +3,7 @@
 #ifdef OVERLAY_SPLASH
 #include "overlay/overlay_text.generated.h"
 #else
-#define TXT_MENU_TITLE "Z32X TETRIS V.0.5"
+#define TXT_MENU_TITLE "Z32X TETRIS V.0.6"
 #define TXT_GAME_OVER "GAME OVER"
 #define TXT_BLANK8 "        "
 #define TXT_BLANK16 "                "
@@ -52,10 +52,18 @@
 #define BOARD_X 30
 #define BOARD_Y 20
 #define LEFT_PANEL_X 2
-#define RIGHT_PANEL_X 56
-#define NEXT_PREVIEW_Y 76
-#define DEDICATION_X 18
-#define DEDICATION_Y 188
+#define SCORE_VALUE_X 34
+#define SCORE_VALUE_Y 2
+#define LEVEL_LABEL_Y 40
+#define LEVEL_VALUE_X 15
+#define LEVEL_VALUE_Y 56
+#define LINES_LABEL_Y 72
+#define LINES_VALUE_X 15
+#define LINES_VALUE_Y 88
+#define NEXT_PREVIEW_X 60
+#define NEXT_PREVIEW_Y 128
+#define NEXT_PREVIEW_CLEAR_WB 16
+#define NEXT_PREVIEW_CLEAR_H 32
 #define FRAME_WB 2
 #define FONT_WB 2
 #define FONT_H 8
@@ -99,6 +107,7 @@ extern void sfx_line_clear(void);
 extern void firmware_set_mode0(void);
 #ifdef OVERLAY_SPLASH
 extern void overlay_load_initial_segments(void);
+extern void overlay_load_gameplay_screen(void);
 extern void overlay_load_runtime_font(void);
 #ifdef MENU_CODE_OVERLAY
 extern void overlay_load_menu_code(void);
@@ -144,8 +153,8 @@ static u16 firmwareRomPointer;
 static const u8 palette[16] = {
    HW_BLUE, HW_BRIGHT_CYAN, HW_BRIGHT_YELLOW, HW_SKY_BLUE,
    HW_PASTEL_YELLOW, HW_PASTEL_GREEN, HW_PINK, HW_PASTEL_MAGENTA,
-   HW_PASTEL_CYAN, HW_BRIGHT_WHITE, HW_PASTEL_BLUE, HW_BRIGHT_GREEN,
-   HW_YELLOW, HW_ORANGE, HW_WHITE, HW_BLACK
+   HW_WHITE, HW_BRIGHT_WHITE, HW_PASTEL_BLUE, HW_BRIGHT_GREEN,
+   HW_YELLOW, HW_ORANGE, HW_BRIGHT_RED, HW_BLACK
 };
 
 #ifndef OVERLAY_SPLASH
@@ -290,13 +299,16 @@ static void drawText(u8 x, u8 y, const char* text, u8 pen) {
 
 static void drawNumberWidth(u8 x, u8 y, u16 value, u8 width) {
    char buf[5];
+   char blank[5];
    i8 i;
    buf[width] = 0;
+   blank[width] = 0;
    for (i = (i8)width - 1; i >= 0; --i) {
       buf[i] = '0' + (value % 10);
+      blank[i] = ' ';
       value /= 10;
    }
-   drawText(x, y, TXT_BLANK8, 9);
+   drawText(x, y, blank, 9);
    drawText(x, y, buf, 9);
 }
 
@@ -463,7 +475,7 @@ static void cacheCurrentPieceSprites(void) {
 }
 
 static void cacheNextPieceSprites(void) {
-   buildPieceCellSprites((u8*)nextCellSprite, nextPiece, 0);
+   buildPieceCellSprites((u8*)nextCellSprite, nextPiece, BOARD_BG);
 }
 
 static void drawBoardCell(u8 x, u8 y) {
@@ -480,8 +492,13 @@ static void drawBoardBackground(void) {
    cpct_drawSolidBox(pvm, cellPattern[BOARD_BG], BOARD_W * CELL_WB, BOARD_H * CELL_H);
 }
 
-static void drawFrame(void) {
+static void drawGameplayHudText(void) {
+#ifdef OVERLAY_SPLASH
+   overlay_load_gameplay_screen();
+   setVideoHardware();
+#else
    u8* pvm;
+   cpct_clearScreen(cellPattern[0]);
    pvm = cpct_getScreenPtr(CPCT_VMEM_START, BOARD_X - FRAME_WB, BOARD_Y - 4);
    cpct_drawSolidBox(pvm, cellPattern[8], BOARD_W * CELL_WB + FRAME_WB * 2, 4);
    pvm = cpct_getScreenPtr(CPCT_VMEM_START, BOARD_X - FRAME_WB, BOARD_Y);
@@ -490,12 +507,10 @@ static void drawFrame(void) {
    cpct_drawSolidBox(pvm, cellPattern[8], FRAME_WB, BOARD_H * CELL_H);
    pvm = cpct_getScreenPtr(CPCT_VMEM_START, BOARD_X - FRAME_WB, BOARD_Y + BOARD_H * CELL_H);
    cpct_drawSolidBox(pvm, cellPattern[8], BOARD_W * CELL_WB + FRAME_WB * 2, 4);
-   drawText(LEFT_PANEL_X, 20, TXT_SCORE, 9);
-   drawText(LEFT_PANEL_X, 64, TXT_LEVEL, 9);
-   drawText(LEFT_PANEL_X, 104, TXT_LINES, 9);
-   drawText(RIGHT_PANEL_X, 20, TXT_TETRIS, 9);
-   drawText(RIGHT_PANEL_X, 56, TXT_NEXT, 9);
-   drawText(DEDICATION_X, DEDICATION_Y, TXT_DEDICATION, 9);
+#endif
+   drawText(LEFT_PANEL_X, SCORE_VALUE_Y, TXT_SCORE, 9);
+   drawText(LEFT_PANEL_X, LEVEL_LABEL_Y, TXT_LEVEL, 9);
+   drawText(LEFT_PANEL_X, LINES_LABEL_Y, TXT_LINES, 9);
 }
 
 static void clearBoard(void) {
@@ -722,13 +737,13 @@ static u8 clearLines(void) {
       drawBoard();
       cpct_waitVSYNC();
       music_play_frame();
-      drawText(LEFT_PANEL_X, 36, scoreText, 9);
+      drawText(SCORE_VALUE_X, SCORE_VALUE_Y, scoreText, 9);
       cpct_waitVSYNC();
       music_play_frame();
-      drawNumberWidth(LEFT_PANEL_X, 80, level, 3);
+      drawNumberWidth(LEVEL_VALUE_X, LEVEL_VALUE_Y, level, 3);
       cpct_waitVSYNC();
       music_play_frame();
-      drawNumberWidth(LEFT_PANEL_X, 120, linesCleared, 4);
+      drawNumberWidth(LINES_VALUE_X, LINES_VALUE_Y, linesCleared, 4);
       cpct_waitVSYNC();
       music_play_frame();
    }
@@ -741,17 +756,42 @@ static void drawNext(void) {
    u8 y;
    u8 i;
    u8 shape;
+   u8 minX;
+   u8 maxX;
+   u8 minY;
+   u8 maxY;
+   u8 offsetX;
+   u8 offsetY;
    u8* pvm;
-   pvm = cpct_getScreenPtr(CPCT_VMEM_START, RIGHT_PANEL_X, NEXT_PREVIEW_Y);
-   cpct_drawSolidBox(pvm, cellPattern[0], 20, 32);
+   pvm = cpct_getScreenPtr(CPCT_VMEM_START, NEXT_PREVIEW_X, NEXT_PREVIEW_Y);
+   cpct_drawSolidBox(pvm, cellPattern[BOARD_BG], NEXT_PREVIEW_CLEAR_WB, NEXT_PREVIEW_CLEAR_H);
    shape = nextPiece - 1;
+   minX = 4;
+   minY = 4;
+   maxX = 0;
+   maxY = 0;
    for (i = 0; i < 4; ++i) {
       cell = SHAPE_CELL(shape, 0, i);
       x = SHAPE_X(cell);
       y = SHAPE_Y(cell);
+      if (x < minX)
+         minX = x;
+      if (x > maxX)
+         maxX = x;
+      if (y < minY)
+         minY = y;
+      if (y > maxY)
+         maxY = y;
+   }
+   offsetX = (NEXT_PREVIEW_CLEAR_WB - ((maxX - minX + 1) * CELL_WB)) / 2;
+   offsetY = (NEXT_PREVIEW_CLEAR_H - ((maxY - minY + 1) * CELL_H)) / 2;
+   for (i = 0; i < 4; ++i) {
+      cell = SHAPE_CELL(shape, 0, i);
+      x = SHAPE_X(cell) - minX;
+      y = SHAPE_Y(cell) - minY;
       cpct_drawSprite(
          nextCellSprite[i],
-         cpct_getScreenPtr(CPCT_VMEM_START, RIGHT_PANEL_X + x * CELL_WB, NEXT_PREVIEW_Y + y * CELL_H),
+         cpct_getScreenPtr(CPCT_VMEM_START, NEXT_PREVIEW_X + offsetX + x * CELL_WB, NEXT_PREVIEW_Y + offsetY + y * CELL_H),
          CELL_WB,
          CELL_H
       );
@@ -993,17 +1033,16 @@ static void startGame(void) {
    controlMode = menu();
    waitReleased();
    resetInputState();
-   cpct_clearScreen(cellPattern[0]);
    clearBoard();
-   drawFrame();
+   drawGameplayHudText();
    drawBoardBackground();
    linesCleared = 0;
    resetScore();
    updateLevelAndGravity();
    nextPiece = randomPiece();
-   drawText(LEFT_PANEL_X, 36, scoreText, 9);
-   drawNumberWidth(LEFT_PANEL_X, 80, level, 3);
-   drawNumberWidth(LEFT_PANEL_X, 120, linesCleared, 4);
+   drawText(SCORE_VALUE_X, SCORE_VALUE_Y, scoreText, 9);
+   drawNumberWidth(LEVEL_VALUE_X, LEVEL_VALUE_Y, level, 3);
+   drawNumberWidth(LINES_VALUE_X, LINES_VALUE_Y, linesCleared, 4);
    music_init();
    if (spawnPiece())
       return;
