@@ -1,6 +1,10 @@
-# Tetris
+# Tetris v0.4
 
 Amstrad CPC `MODE 0` Tetris.
+
+Version 0.4 is the monolithic release line. It keeps the game as a single
+AMSDOS binary and includes a CDT artifact, so it is the release to use for tape
+or other non-overlay packaging.
 
 The current source tree is laid out as a CPCtelera project. The older
 Locomotive BASIC prototype is still kept as `TETRIS.BAS`, and the previous
@@ -49,6 +53,9 @@ This creates:
 - `dist/TETRIS.BIN`: AMSDOS-headered binary for direct `RUN"TETRIS.BIN"`.
 - `dist/TETRIS.DSK`: copied release disk image.
 - `dist/TETRIS.CDT`: copied release tape image.
+- `dist/TETRIS-v0.4.BIN`: versioned v0.4 binary.
+- `dist/TETRIS-v0.4.DSK`: versioned v0.4 disk image.
+- `dist/TETRIS-v0.4.CDT`: versioned v0.4 tape image.
 
 The release script fails the build if the binary grows into CPC AMSDOS/BASIC
 high memory; `RUN"TETRIS.BIN"` expects the payload to stay below that area.
