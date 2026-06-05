@@ -5,7 +5,8 @@ Amstrad CPC `MODE 0` Tetris built with CPCtelera.
 Version 0.7 is a DSK-only direct-FDC overlay release. The visible disk entry
 point is a small boot file named `TETRIS.BIN`; the resident game payload,
 runtime overlays, and persistent high-score sector are stored in fixed hidden
-sectors on the DSK.
+sectors on the DSK. The current v0.7 release includes the ULIfAC raw-FDC write
+fix for high-score saves.
 
 Run in WinAPE or on a CPC disk setup:
 
@@ -53,13 +54,14 @@ powershell -ExecutionPolicy Bypass -File .\tools\build_cpc_release.ps1
   and the high-score sector are loaded from hidden sectors only when needed.
 - Menu and redefine-key code are resident to keep menu return immediate.
 - Screen RAM remains at `0xC000-0xFFFF`.
-- Current resident payload ends at `0x3C85`, leaving guarded resident growth
+- Current resident payload ends at `0x3D02`, leaving guarded resident growth
   below the overlay workspace and more room through overlays.
 
 Details are documented in:
 
 - `docs/v0.7-release.md`
 - `docs/overlay-fdc-loader.md`
+- `docs/ulifac-fdc-write-notes.md`
 - `docs/session-context-v0.7.md`
 
 ## Features
@@ -80,6 +82,9 @@ Details are documented in:
 - Animated coloured `Z32X Tetris` menu title.
 - Animated `GAME OVER` screen with persistent five-entry high-score table.
 - High-score table is loaded from and saved to a hidden DSK sector.
+- High-score saving has been tested on real CPC 464 + ULIfAC USB. The runtime
+  write loop handles ULIfAC's `MSR F0` write-execution behavior by feeding data
+  while `RQM=1` and `EXM=1`, ignoring `DIO` in that phase.
 - Default high-score leader: `MARIJA 05000`.
 - Score counter: single/double/triple/Tetris clears score 40/100/300/1200
   points multiplied by current level.

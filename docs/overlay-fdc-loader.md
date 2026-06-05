@@ -87,6 +87,7 @@ The loader talks to the CPC floppy controller directly:
 Implemented commands:
 
 - `0x07` recalibrate
+- `0x03` specify
 - `0x0F` seek
 - `0x08` sense interrupt status
 - `0x46` read data, MFM
@@ -101,9 +102,18 @@ Important behavior discovered during testing:
   corrected.
 - Reading sectors works reliably with fixed track/sector ordering once seek
   polling and command/result byte timing are correct.
-- Writing sectors is timing-sensitive. The v0.7 high-score save path keeps the
-  transfer loop tight by streaming from `DE` with a 512-byte `HL` counter while
-  interrupts are disabled.
+- Writing sectors is timing-sensitive and ULIfAC reports a non-standard status
+  during write execution. In the tested CPC 464 + ULIfAC USB setup, the main
+  status register reported `MSR F0` after `WRITE DATA`: `RQM=1`, `DIO=1`,
+  `EXM=1`, busy. Reading the data register in that state froze at diagnostic
+  phase `P D0`.
+- The working v0.7 save fix treats `RQM=1` plus `EXM=1` as "feed one byte" for
+  a write command, ignoring `DIO` while execution mode is set. Do not read the
+  FDC data register while `EXM=1` just because `DIO=1` on ULIfAC.
+- Runtime write setup now issues `SPECIFY` before recalibrate/seek so the
+  direct-FDC loader owns non-DMA timing instead of inheriting firmware state.
+- The high-score write is bounded and non-fatal. If the controller never exits
+  execution phase, return to the game instead of freezing.
 
 ## Overlay Rules For Future Games
 
@@ -125,7 +135,11 @@ Important behavior discovered during testing:
 
 - `tools\build_overlay_dsk.ps1`: official Tetris v0.7 overlay DSK builder.
 - `tools\build_fdc_diagnostic_dsk.ps1`: single-track FDC diagnostic disk.
+- `tools\build_fdc_write_diagnostic_dsk.ps1`: write-specific FDC diagnostic
+  disk builder.
 - `tools\overlay_sector_loader_direct_fdc.s`: direct-FDC boot loader template.
 - `tools\runtime_overlay_loader.s`: resident runtime overlay loader template.
 - `tools\menu_overlay.c`: historical example of C code compiled as a callable
   overlay. The v0.6+ menu code is resident to remove the return-to-menu delay.
+- `docs\ulifac-fdc-write-notes.md`: exact ULIfAC write diagnostics and the
+  reusable write-loop rule for future games.

@@ -40,8 +40,8 @@ strategy does not apply to CDT. Keep v0.4 as the monolithic/CDT-friendly build.
 ## Current v0.7 Overlay Layout
 
 - Boot loader: load/run `0x0800`, direct FDC, catalog filename `TETRIS.BIN`.
-- Resident payload: load `0x1000`, run `0x304F`, highest address `0x3C85`.
-- Resident payload bytes: 11398, 23 sectors, tracks 20-22.
+- Resident payload: load `0x1000`, run `0x304F`, highest address `0x3D02`.
+- Resident payload bytes: 11523, 23 sectors, tracks 20-22.
 - Gameplay screen overlay: load `0xC000`, 16384 bytes, tracks 23-26.
 - High-score sector: buffer `0x4E00`, 512 bytes, track 27.
 - Splash/title overlay: load `0x5000`, 16175 bytes, tracks 30-33.
@@ -70,6 +70,12 @@ Current practical memory planning:
   non-fatal and returns to the game after attempting the write.
 - The write path uses FDC command `0x45` and keeps the data loop tight so it can
   keep up with the controller.
+- Patched ULIfAC write rule: during `WRITE DATA` execution, if `RQM=1` and
+  `EXM=1`, feed data even if `DIO=1`. On the tested CPC 464 + ULIfAC USB setup,
+  `MSR F0` appeared during write execution; reading the data register in that
+  state froze at diagnostic phase `P D0`, while outputting data worked.
+- Runtime write setup issues `SPECIFY` before recalibrate/seek so the direct
+  FDC loader owns non-DMA timing.
 - Treat `sense interrupt status` result `ST0=0x80` as "not ready yet"; keep
   polling instead of failing.
 - Keep interrupts disabled through the boot payload transfer.
@@ -143,8 +149,12 @@ as original/inspired alternatives, not exact note-for-note reproductions.
 - `tools/runtime_overlay_loader.s`: direct-FDC runtime overlay loader template.
 - `tools/generate_gameplay_background.ps1`: gameplay screen overlay generator.
 - `tools/build_fdc_diagnostic_dsk.ps1`: FDC diagnostic disk builder.
+- `tools/build_fdc_write_diagnostic_dsk.ps1`: write-specific FDC diagnostic
+  disk builder.
+- `tools/fdc_write_diagnostic_loader.s`: isolated write diagnostic loader.
 - `docs/overlay-fdc-loader.md`: reusable overlay/FDC method notes.
 - `docs/session-context-v0.7.md`: future-session context.
+- `docs/ulifac-fdc-write-notes.md`: ULIfAC raw-FDC write behavior and fix.
 
 ## Future ULIfAC Note
 

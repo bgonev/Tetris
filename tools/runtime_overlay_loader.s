@@ -168,6 +168,8 @@ _overlay_load_runtime_font::
 init_fdc_loader:
    call fdc_motor_on
    call fdc_drain_results
+   call fdc_specify
+   ret nc
    call fdc_recalibrate
    ret nc
    xor a
@@ -349,6 +351,19 @@ drain_loop:
    in a,(c)
    dec d
    jr nz,drain_loop
+   ret
+
+fdc_specify:
+   ld a,#0x03
+   call fdc_write_byte
+   ret nc
+   ld a,#0xDF
+   call fdc_write_byte
+   ret nc
+   ld a,#0x03
+   call fdc_write_byte
+   ret nc
+   scf
    ret
 
 fdc_recalibrate:
@@ -611,6 +626,8 @@ read_result_error:
    ret
 
 fdc_write_current_sector:
+   call clear_result_data
+
    ld a,#0x45
    call fdc_write_byte
    ret nc
@@ -640,15 +657,24 @@ fdc_write_current_sector:
    ret nc
 
    ld de,(current_dest)
-   ld hl,#0x0200
+   ld hl,#0x1200
    ld bc,#0xFB7E
    call save_and_disable_interrupts
 
+write_data_wait_reset:
+   exx
+   ld bc,#0xFFFF
+   exx
+
 write_data_wait:
    in a,(c)
-   jp p,write_data_wait
-   bit 6,a
-   jr nz,write_data_result
+   bit 7,a
+   jr z,write_data_wait_tick
+   bit 5,a
+   jr z,write_data_result
+   ; ULIfAC can report DIO=1 during write execution (MSR F0).
+   ; While EXM is set for WRITE DATA, feed bytes on RQM and do not read.
+
    inc c
    ld a,(de)
    out (c),a
@@ -657,20 +683,97 @@ write_data_wait:
    dec hl
    ld a,h
    or l
+   jr nz,write_data_wait_reset
+   jr write_data_timeout
+
+write_data_wait_tick:
+   exx
+   dec bc
+   ld a,b
+   or c
+   exx
    jr nz,write_data_wait
-   jr write_data_end
+   jr write_data_timeout
+
+write_data_timeout:
+   call restore_interrupts
+   call fdc_drain_results
+   or a
+   ret
 
 write_data_result:
    call restore_interrupts
-   call fdc_read_results
+   call fdc_read_results_until_idle
    ret nc
    jp fdc_check_read_results
 
 write_data_end:
+   exx
+   ld bc,#0xFFFF
+   exx
+
+write_finish_wait:
+   in a,(c)
+   bit 5,a
+   jr z,write_data_result_after_end
+   bit 6,a
+   jr nz,write_data_result_after_end
+   exx
+   dec bc
+   ld a,b
+   or c
+   exx
+   jr nz,write_finish_wait
+   jr write_data_timeout
+
+write_data_result_after_end:
    call restore_interrupts
-   call fdc_read_results
+   call fdc_read_results_until_idle
    ret nc
    jp fdc_check_read_results
+
+fdc_read_results_until_idle:
+   ld hl,#result_data
+   ld b,#7
+read_results_idle_loop:
+   push hl
+   push bc
+   call fdc_read_result_byte
+   pop bc
+   pop hl
+   ret nc
+   ld (hl),a
+   inc hl
+
+   push hl
+   push bc
+   ld bc,#0xFB7E
+   ld a,#5
+result_idle_delay:
+   dec a
+   jr nz,result_idle_delay
+   in a,(c)
+   pop bc
+   pop hl
+   and #0x10
+   jr z,read_results_idle_done
+   djnz read_results_idle_loop
+   or a
+   ret
+
+read_results_idle_done:
+   scf
+   ret
+
+clear_result_data:
+   ld hl,#result_data
+   ld b,#7
+   ld a,#0xEE
+clear_result_loop:
+   ld (hl),a
+   inc hl
+   djnz clear_result_loop
+   ret
 
 verify_runtime_font:
    ld a,(hl)

@@ -18,7 +18,8 @@ RUN"TETRIS.BIN"
 
 - Direct-FDC boot works.
 - Direct-FDC runtime overlays work.
-- Direct-FDC high-score sector read/write is implemented.
+- Direct-FDC high-score sector read/write is implemented and tested on real
+  CPC 464 + ULIfAC USB after the patched write-loop fix.
 - Splash, title music, resident menu, gameplay, game over, high-score table,
   name entry, and return-to-menu have been tested during v0.7 work.
 - The gameplay screen is generated from `assets\new_gameplay_layout.jpg`.
@@ -32,8 +33,8 @@ RUN"TETRIS.BIN"
 - Boot loader size: 851 bytes
 - Resident payload load: `0x1000`
 - Resident payload run: `0x304F`
-- Resident payload highest address: `0x3C85`
-- Resident payload bytes: 11398
+- Resident payload highest address: `0x3D02`
+- Resident payload bytes: 11523
 - Resident payload sectors: 23
 - Resident payload tracks: 20-22
 - Gameplay screen overlay: `0xC000`, 16384 bytes, 32 sectors, tracks 23-26
@@ -58,6 +59,10 @@ RUN"TETRIS.BIN"
   - `IVA 00250`
 - Save failures are non-fatal. If save behavior regresses, inspect the
   `fdc_write_current_sector` timing loop in `tools\runtime_overlay_loader.s`.
+- ULIfAC write behavior is documented in
+  `docs\ulifac-fdc-write-notes.md`. Critical rule: during `WRITE DATA`
+  execution, if `RQM=1` and `EXM=1`, feed data even if `DIO=1`. Do not read
+  the FDC data register while `EXM=1` on ULIfAC.
 
 ## Memory Planning
 
@@ -86,8 +91,8 @@ active until mode switching has been proven.
 
 ## Next Good Improvements
 
-- Test v0.7 release disk on the real target/emulator and confirm high-score
-  persistence after reboot.
+- Keep the patched v0.7 release disk as the baseline for ULIfAC high-score
+  persistence.
 - If the HUD still needs visual tuning, adjust only `LEFT_PANEL_X` and
   `HUD_VALUE_X` in `src\main.c`.
 - Add a small overlay manifest to the build script if the number of segments
