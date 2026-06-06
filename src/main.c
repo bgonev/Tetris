@@ -172,7 +172,9 @@ static i8 pieceY;
 static u8 nextPiece;
 static u8 gravityTick;
 static u8 gravityDelay;
-static u8 rngSeed;
+static u16 rngSeed;
+static u8 pieceBag[7];
+static u8 pieceBagIndex;
 static u16 linesCleared;
 static char scoreText[SCORE_DIGITS + 1];
 static HighScoreEntry highScores[HIGH_SCORE_COUNT];
@@ -592,7 +594,8 @@ static void setDefaultKeys(void) {
 }
 
 static void initRuntimeState(void) {
-   rngSeed = 91;
+   rngSeed = 0x4D91;
+   pieceBagIndex = 7;
    setDefaultKeys();
    resetInputState();
 }
@@ -833,9 +836,54 @@ static u8 collision(i8 x0, i8 y0, u8 r) {
    return 0;
 }
 
+static u8 nextRandomByte(void) {
+   u16 x;
+   x = rngSeed;
+   x ^= x << 7;
+   x ^= x >> 9;
+   x ^= x << 8;
+   if (!x)
+      x = 0xACE1;
+   rngSeed = x;
+   return (u8)(x ^ (x >> 8));
+}
+
+static void randomTick(void) {
+   rngSeed += 0x0101;
+   rngSeed ^= rngSeed << 5;
+   rngSeed ^= rngSeed >> 7;
+   if (!rngSeed)
+      rngSeed = 0xACE1;
+}
+
+static void stirRandom(u8 value) {
+   rngSeed ^= ((u16)value << 8) | (u16)(value + 0xA5);
+   randomTick();
+}
+
+static u8 randomColour(void) {
+   return (nextRandomByte() % 7) + 1;
+}
+
+static void refillPieceBag(void) {
+   u8 i;
+   u8 j;
+   u8 swap;
+   for (i = 0; i < 7; ++i)
+      pieceBag[i] = i + 1;
+   for (i = 6; i > 0; --i) {
+      j = nextRandomByte() % (i + 1);
+      swap = pieceBag[i];
+      pieceBag[i] = pieceBag[j];
+      pieceBag[j] = swap;
+   }
+   pieceBagIndex = 0;
+}
+
 static u8 randomPiece(void) {
-   rngSeed = rngSeed * 5 + 1;
-   return (rngSeed % 7) + 1;
+   if (pieceBagIndex >= 7)
+      refillPieceBag();
+   return pieceBag[pieceBagIndex++];
 }
 
 static void drawBigChar2x(u8 x, u8 y, char c, u8 pen) {
@@ -920,6 +968,7 @@ static void tickGameOverTitle(u8* phase, u8* frame) {
 static void waitReleasedGameOverTitle(u8* phase, u8* frame) {
    do {
       cpct_waitVSYNC();
+      randomTick();
       tickGameOverTitle(phase, frame);
       cpct_scanKeyboard_f();
    } while (anyInputPressed());
@@ -940,6 +989,7 @@ static void enterHighScoreName(u8 position) {
    waitReleasedGameOverTitle(&phase, &frame);
    while (1) {
       cpct_waitVSYNC();
+      randomTick();
       tickGameOverTitle(&phase, &frame);
       cpct_scanKeyboard_f();
       if (len && (cpct_isKeyPressed(Key_Return) || cpct_isKeyPressed(Key_Enter)))
@@ -973,6 +1023,7 @@ static void waitForGameOverDismiss(void) {
    waitReleasedGameOverTitle(&phase, &frame);
    while (1) {
       cpct_waitVSYNC();
+      randomTick();
       tickGameOverTitle(&phase, &frame);
       cpct_scanKeyboard_f();
       if (anyInputPressed())
@@ -985,7 +1036,7 @@ static void waitForGameOverDismiss(void) {
 static void initMenuTitleColours(u8* colours) {
    u8 i;
    for (i = 0; i < MENU_TITLE_LEN; ++i)
-      colours[i] = randomPiece();
+      colours[i] = randomColour();
 }
 
 static void shiftMenuTitleColours(u8* colours) {
@@ -1251,6 +1302,7 @@ static u8 anyInputPressed(void) {
 static void waitReleased(void) {
    do {
       cpct_waitVSYNC();
+      randomTick();
       cpct_scanKeyboard_f();
    } while (anyInputPressed());
 }
@@ -1272,6 +1324,7 @@ static void showSplash(void) {
    waitReleased();
    do {
       cpct_waitVSYNC();
+      randomTick();
       music_play_frame();
       cpct_scanKeyboard_f();
    } while (!anyInputPressed());
@@ -1288,6 +1341,7 @@ static cpct_keyID chooseKey(const char* prompt) {
    waitReleased();
    while (1) {
       cpct_waitVSYNC();
+      randomTick();
       cpct_scanKeyboard_f();
       for (i = 0; i < KEY_CHOICE_COUNT; ++i) {
          if (cpct_isKeyPressed(choices[i].id)) {
@@ -1339,17 +1393,23 @@ static u8 menu(void) {
    titleFrame = 0;
    while (1) {
       cpct_waitVSYNC();
+      randomTick();
       if (++titleFrame >= MENU_TITLE_ANIM_FRAMES) {
          titleFrame = 0;
          shiftMenuTitleColours(titleColours);
          drawMenuTitle(titleColours);
       }
       cpct_scanKeyboard_f();
-      if (cpct_isKeyPressed(Key_1))
+      if (cpct_isKeyPressed(Key_1)) {
+         stirRandom(1);
          return 0;
-      if (cpct_isKeyPressed(Key_2))
+      }
+      if (cpct_isKeyPressed(Key_2)) {
+         stirRandom(2);
          return 1;
+      }
       if (cpct_isKeyPressed(Key_3)) {
+         stirRandom(3);
          redefineKeys();
          return menu();
       }
@@ -1373,6 +1433,8 @@ static void startGame(void) {
    u8 scorePosition;
    controlMode = menu();
    waitReleased();
+   stirRandom(controlMode);
+   pieceBagIndex = 7;
    resetInputState();
    clearBoard();
    drawGameplayHudText();

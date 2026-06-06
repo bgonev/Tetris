@@ -25,6 +25,8 @@ RUN"TETRIS.BIN"
 - The gameplay screen is generated from `assets\new_gameplay_layout.jpg`.
 - The gameplay tower dome is green in v0.7.
 - The HUD is compact and left-aligned with a 5-digit score.
+- Gameplay pieces use a shuffled 7-piece bag seeded from player timing, so
+  fresh games no longer use the same deterministic piece order.
 - Do not push experimental iterations unless the user explicitly asks.
 
 ## Current Build Metrics
@@ -32,10 +34,10 @@ RUN"TETRIS.BIN"
 - Boot loader load/run: `0x0800`
 - Boot loader size: 851 bytes
 - Resident payload load: `0x1000`
-- Resident payload run: `0x304F`
-- Resident payload highest address: `0x3D02`
-- Resident payload bytes: 11523
-- Resident payload sectors: 23
+- Resident payload run: `0x31DA`
+- Resident payload highest address: `0x3E96`
+- Resident payload bytes: 11927
+- Resident payload sectors: 24
 - Resident payload tracks: 20-22
 - Gameplay screen overlay: `0xC000`, 16384 bytes, 32 sectors, tracks 23-26
 - High-score sector: `0x4E00`, 512 bytes, 1 sector, track 27

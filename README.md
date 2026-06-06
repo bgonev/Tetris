@@ -6,7 +6,7 @@ Version 0.7 is a DSK-only direct-FDC overlay release. The visible disk entry
 point is a small boot file named `TETRIS.BIN`; the resident game payload,
 runtime overlays, and persistent high-score sector are stored in fixed hidden
 sectors on the DSK. The current v0.7 release includes the ULIfAC raw-FDC write
-fix for high-score saves.
+fix for high-score saves and a shuffled 7-piece gameplay randomizer.
 
 Run in WinAPE or on a CPC disk setup:
 
@@ -54,7 +54,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\build_cpc_release.ps1
   and the high-score sector are loaded from hidden sectors only when needed.
 - Menu and redefine-key code are resident to keep menu return immediate.
 - Screen RAM remains at `0xC000-0xFFFF`.
-- Current resident payload ends at `0x3D02`, leaving guarded resident growth
+- Current resident payload ends at `0x3E96`, leaving guarded resident growth
   below the overlay workspace and more room through overlays.
 
 Details are documented in:
@@ -78,6 +78,8 @@ Details are documented in:
 - Compact left-aligned HUD with 5-digit score:
   `SCORE 00000`, `LEVEL 001`, `LINES 0000`.
 - 10x20 Tetris playfield with solid CPCtelera tile sprites.
+- Gameplay pieces use a shuffled 7-piece bag, seeded from player timing, so
+  fresh games no longer start with the same deterministic piece order.
 - Compact sprite font for menu, panel, game over, and gameplay labels.
 - Animated coloured `Z32X Tetris` menu title.
 - Animated `GAME OVER` screen with persistent five-entry high-score table.
