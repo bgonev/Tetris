@@ -23,22 +23,22 @@ $mode0WidthBytes = 80
 $targetDisplayAspect = [double]$displayWidth / [double]$height
 
 $palette = @(
-    @(0, 0, 0),       # 0 HW_BLACK
+    @(0, 0, 255),     # 0 HW_BLUE
     @(0, 255, 255),   # 1 HW_BRIGHT_CYAN
     @(255, 255, 0),   # 2 HW_BRIGHT_YELLOW
-    @(0, 0, 255),     # 3 HW_BRIGHT_BLUE
-    @(255, 128, 0),   # 4 HW_ORANGE
-    @(0, 255, 0),     # 5 HW_BRIGHT_GREEN
-    @(255, 0, 0),     # 6 HW_BRIGHT_RED
-    @(255, 0, 255),   # 7 HW_MAGENTA
+    @(0, 128, 255),   # 3 HW_SKY_BLUE
+    @(255, 255, 128), # 4 HW_PASTEL_YELLOW
+    @(128, 255, 128), # 5 HW_PASTEL_GREEN
+    @(255, 128, 128), # 6 HW_PINK
+    @(255, 128, 255), # 7 HW_PASTEL_MAGENTA
     @(160, 160, 160), # 8 HW_WHITE
     @(255, 255, 255), # 9 HW_BRIGHT_WHITE
-    @(0, 128, 255),   # 10 HW_SKY_BLUE
-    @(128, 255, 128), # 11 HW_PASTEL_GREEN
-    @(255, 128, 128), # 12 HW_PINK
-    @(192, 192, 0),   # 13 HW_YELLOW
-    @(0, 160, 128),   # 14 HW_SEA_GREEN
-    @(128, 128, 255)  # 15 HW_MAUVE
+    @(128, 128, 255), # 10 HW_PASTEL_BLUE
+    @(0, 255, 0),     # 11 HW_BRIGHT_GREEN
+    @(192, 192, 0),   # 12 HW_YELLOW
+    @(255, 128, 0),   # 13 HW_ORANGE
+    @(255, 0, 0),     # 14 HW_BRIGHT_RED
+    @(0, 0, 0)        # 15 HW_BLACK
 )
 
 $mode0Table = @(0x00, 0x40, 0x04, 0x44, 0x10, 0x50, 0x14, 0x54, 0x01, 0x41, 0x05, 0x45, 0x11, 0x51, 0x15, 0x55)
@@ -151,11 +151,16 @@ $header = @"
 #define SPLASH_W_BYTES 80
 #define SPLASH_HEIGHT 200
 
+#if OVERLAY_SPLASH
+#define SPLASH_OVERLAY_ADDRESS ((const u8*)0x5000)
+#define splash_img SPLASH_OVERLAY_ADDRESS
+#else
 extern const u8 splash_img[SPLASH_W_BYTES * SPLASH_HEIGHT];
+#endif
 
 #endif
 "@
-[System.IO.File]::WriteAllText($HeaderPath, $header, [System.Text.Encoding]::ASCII)
+[System.IO.File]::WriteAllText($HeaderPath, $header + [Environment]::NewLine, [System.Text.Encoding]::ASCII)
 
 Write-Host "Generated $AsmPath"
 Write-Host "Generated $HeaderPath"

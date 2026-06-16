@@ -52,15 +52,19 @@ msg_bytes:
 
 TXT_OUTPUT      = #0xBB5A
 TXT_SET_CURSOR  = #0xBB75
+TXT_SET_PEN     = #0xBB90
+TXT_SET_PAPER   = #0xBB96
 LOWEST_USABLE   = #0x1000
 HIGHEST_USABLE  = #0x7FFF
 PAYLOAD_RUN     = #0x2B22
 HW_RED          = #0x1C
 HW_WHITE        = #0x00
+HW_BLACK        = #0x14
 
 _loader_start::
    di
    ld sp,#0xBFF0
+   call prepare_loader_display
    ld h,#10
    ld l,#13
    call TXT_SET_CURSOR
@@ -478,6 +482,38 @@ clear_current_loop:
    ld (hl),a
    inc hl
    djnz clear_current_loop
+   ret
+
+prepare_loader_display:
+   ld a,#HW_BLACK
+   call set_border_colour
+   call set_loader_palette
+   xor a
+   call TXT_SET_PAPER
+   ld a,#1
+   call TXT_SET_PEN
+   xor a
+   ld hl,#0xC000
+   ld de,#0xC001
+   ld bc,#0x3FFF
+   ld (hl),a
+   ldir
+   ret
+
+set_loader_palette:
+   push bc
+   ld b,#0x7F
+   xor a
+   out (c),a
+   ld a,#HW_BLACK
+   or #0x40
+   out (c),a
+   ld a,#1
+   out (c),a
+   ld a,#HW_WHITE
+   or #0x40
+   out (c),a
+   pop bc
    ret
 
 recal_error:

@@ -29,7 +29,7 @@
 #define TXT_DROP "DROP"
 #define TXT_BEST_SCORES "BEST SCORES"
 #define TXT_ENTER_NAME "ENTER NAME"
-#define TXT_NAME_PAD "      "
+#define TXT_NAME_PAD "       "
 #define TXT_SCORE_PAD "     "
 #define TXT_KEY_UNKNOWN "KEY"
 #define TXT_KEY_O "O"
@@ -91,9 +91,9 @@
 #define HIGH_SCORE_MAGIC1 'S'
 #define HIGH_SCORE_MAGIC2 '0'
 #define HIGH_SCORE_MAGIC3 '7'
-#define HIGH_SCORE_VERSION 1
+#define HIGH_SCORE_VERSION 2
 #define HIGH_SCORE_COUNT 5
-#define HIGH_SCORE_NAME_LEN 6
+#define HIGH_SCORE_NAME_LEN 7
 #define HIGH_SCORE_SCORE_LEN SCORE_DIGITS
 #define HIGH_SCORE_ENTRY_SIZE (HIGH_SCORE_NAME_LEN + HIGH_SCORE_SCORE_LEN)
 #define HIGH_SCORE_ENTRIES_OFFSET 8
@@ -122,7 +122,8 @@
 
 #define MAX_LEVEL 100
 #define LINES_PER_LEVEL 10
-#define BOARD_BG 15
+#define SCREEN_BG 15
+#define BOARD_BG SCREEN_BG
 #define CELL_INNER_BORDER BOARD_BG
 #define CELL_OUTER_BORDER CELL_INNER_BORDER
 
@@ -343,11 +344,11 @@ static void drawText(u8 x, u8 y, const char* text, u8 pen) {
       glyph = FONT_GLYPHS + (u16)glyphIndex(*text) * FONT_GLYPH_ROWS;
       for (row = 0; row < FONT_GLYPH_ROWS; ++row) {
          bits = glyph[row];
-         glyphSprite[row * FONT_WB] = cpct_px2byteM0((bits & 8) ? pen : 0, (bits & 4) ? pen : 0);
-         glyphSprite[row * FONT_WB + 1] = cpct_px2byteM0((bits & 2) ? pen : 0, (bits & 1) ? pen : 0);
+         glyphSprite[row * FONT_WB] = cpct_px2byteM0((bits & 8) ? pen : SCREEN_BG, (bits & 4) ? pen : SCREEN_BG);
+         glyphSprite[row * FONT_WB + 1] = cpct_px2byteM0((bits & 2) ? pen : SCREEN_BG, (bits & 1) ? pen : SCREEN_BG);
       }
-      glyphSprite[FONT_GLYPH_ROWS * FONT_WB] = 0;
-      glyphSprite[FONT_GLYPH_ROWS * FONT_WB + 1] = 0;
+      glyphSprite[FONT_GLYPH_ROWS * FONT_WB] = cellPattern[SCREEN_BG];
+      glyphSprite[FONT_GLYPH_ROWS * FONT_WB + 1] = cellPattern[SCREEN_BG];
       cpct_drawSprite(glyphSprite, cpct_getScreenPtr(CPCT_VMEM_START, x, y), FONT_WB, FONT_H);
       x += FONT_ADV;
       ++text;
@@ -400,10 +401,10 @@ static void setHighScoreEntry(u8 index, const char* name, const char* score) {
 
 static void seedHighScores(void) {
    setHighScoreEntry(0, "MARIJA", "05000");
-   setHighScoreEntry(1, "NIKOLA", "00870");
-   setHighScoreEntry(2, "ELENA",  "00640");
-   setHighScoreEntry(3, "GORAN",  "00420");
-   setHighScoreEntry(4, "IVA",    "00250");
+   setHighScoreEntry(1, "MEGLENA", "00870");
+   setHighScoreEntry(2, "MAKSIM",  "00640");
+   setHighScoreEntry(3, "BOJANA",  "00420");
+   setHighScoreEntry(4, "BORO",    "00250");
 }
 
 static u16 highScoreChecksum(const u8* sector) {
@@ -609,7 +610,7 @@ static void setVideoHardware(void) {
    cpct_setVideoMemoryOffset(0);
    cpct_setVideoMode(0);
    cpct_setPalette((u8*)palette, 16);
-   cpct_setBorder(HW_BLUE);
+   cpct_setBorder(HW_BLACK);
 }
 
 static void initVideo(void) {
@@ -619,7 +620,7 @@ static void initVideo(void) {
    setVideoHardware();
    for (i = 0; i < 16; ++i)
       cellPattern[i] = cpct_px2byteM0(i, i);
-   cpct_clearScreen(cellPattern[0]);
+   cpct_clearScreen(cellPattern[SCREEN_BG]);
 }
 
 #ifdef OVERLAY_SPLASH
@@ -728,7 +729,7 @@ static void drawGameplayHudText(void) {
    setVideoHardware();
 #else
    u8* pvm;
-   cpct_clearScreen(cellPattern[0]);
+   cpct_clearScreen(cellPattern[SCREEN_BG]);
    pvm = cpct_getScreenPtr(CPCT_VMEM_START, BOARD_X - FRAME_WB, BOARD_Y - 4);
    cpct_drawSolidBox(pvm, cellPattern[8], BOARD_W * CELL_WB + FRAME_WB * 2, 4);
    pvm = cpct_getScreenPtr(CPCT_VMEM_START, BOARD_X - FRAME_WB, BOARD_Y);
@@ -898,10 +899,10 @@ static void drawBigChar2x(u8 x, u8 y, char c, u8 pen) {
    glyph = FONT_GLYPHS + (u16)glyphIndex(c) * FONT_GLYPH_ROWS;
    for (row = 0; row < FONT_H; ++row) {
       bits = row < FONT_GLYPH_ROWS ? glyph[row] : 0;
-      p0 = (bits & 8) ? pen : 0;
-      p1 = (bits & 4) ? pen : 0;
-      p2 = (bits & 2) ? pen : 0;
-      p3 = (bits & 1) ? pen : 0;
+      p0 = (bits & 8) ? pen : SCREEN_BG;
+      p1 = (bits & 4) ? pen : SCREEN_BG;
+      p2 = (bits & 2) ? pen : SCREEN_BG;
+      p3 = (bits & 1) ? pen : SCREEN_BG;
       glyphSprite[0] = glyphSprite[4] = cpct_px2byteM0(p0, p0);
       glyphSprite[1] = glyphSprite[5] = cpct_px2byteM0(p1, p1);
       glyphSprite[2] = glyphSprite[6] = cpct_px2byteM0(p2, p2);
@@ -938,7 +939,7 @@ static void drawHighScoreBoard(void) {
 }
 
 static void drawGameOverScoreboard(void) {
-   cpct_clearScreen(cellPattern[0]);
+   cpct_clearScreen(cellPattern[SCREEN_BG]);
    drawGameOverTitle(0);
    drawHighScoreBoard();
 }
@@ -1318,7 +1319,8 @@ static void drawSplashImage(void) {
 }
 
 static void showSplash(void) {
-   cpct_clearScreen(cellPattern[0]);
+   cpct_setBorder(HW_BLACK);
+   cpct_clearScreen(cellPattern[SCREEN_BG]);
    drawSplashImage();
    music_init_troika();
    waitReleased();
@@ -1355,7 +1357,7 @@ static cpct_keyID chooseKey(const char* prompt) {
 }
 
 static void redefineKeys(void) {
-   cpct_clearScreen(cellPattern[0]);
+   cpct_clearScreen(cellPattern[SCREEN_BG]);
    drawText(4, 24, TXT_REDEFINE_KEYS, 9);
    drawText(4, 48, TXT_REDEFINE_KEYS_HINT, 9);
    drawText(4, 64, TXT_SPACE_OR_CURSORS, 9);
@@ -1371,7 +1373,7 @@ static u8 menu(void) {
    u8 titleColours[MENU_TITLE_LEN];
 
    music_stop();
-   cpct_clearScreen(cellPattern[0]);
+   cpct_clearScreen(cellPattern[SCREEN_BG]);
    initMenuTitleColours(titleColours);
    drawMenuTitle(titleColours);
    drawText(4, 48, TXT_SELECT, 11);

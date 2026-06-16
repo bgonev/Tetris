@@ -268,7 +268,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path $PreviewPath) | Out-Null
 $source = [System.Drawing.Image]::FromFile((Resolve-Path $SourcePath))
 $scaled = New-Object System.Drawing.Bitmap $width, $height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $graphics = [System.Drawing.Graphics]::FromImage($scaled)
-$graphics.Clear([System.Drawing.Color]::Blue)
+$graphics.Clear([System.Drawing.Color]::Black)
 $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
 $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
 $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::None
@@ -284,8 +284,15 @@ for ($y = 0; $y -lt $height; $y++) {
 }
 $scaled.Dispose()
 
+# Use black for the mock-derived sky/background ink.
+for ($i = 0; $i -lt $indexes.Length; $i++) {
+    if ($indexes[$i] -eq 0) {
+        $indexes[$i] = 15
+    }
+}
+
 # Try the dome with green glass while keeping the rest of the mock-derived
-# background unchanged. Coordinates are MODE 0 logical pixels.
+# layout unchanged. Coordinates are MODE 0 logical pixels.
 for ($y = 8; $y -le 50; $y++) {
     for ($x = 124; $x -le 152; $x++) {
         $offset = $y * $width + $x
@@ -297,8 +304,8 @@ for ($y = 8; $y -le 50; $y++) {
 
 # Rebuild the critical live-game areas at CPC resolution so the board and HUD
 # remain readable even if the downscaled mock has thin details.
-Fill-Rect $indexes 0 0 116 13 0
-Fill-Rect $indexes 0 0 48 104 0
+Fill-Rect $indexes 0 0 116 13 15
+Fill-Rect $indexes 0 0 48 104 15
 Draw-Left-Building $indexes
 Fill-Bricks $indexes 48 13 64 177
 Stroke-Rect $indexes 54 17 52 169 15

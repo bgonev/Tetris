@@ -491,7 +491,7 @@ function Get-OverlayTextEntries {
         [PSCustomObject]@{ Name = "TXT_DROP"; Text = "DROP" },
         [PSCustomObject]@{ Name = "TXT_BEST_SCORES"; Text = "BEST SCORES" },
         [PSCustomObject]@{ Name = "TXT_ENTER_NAME"; Text = "ENTER NAME" },
-        [PSCustomObject]@{ Name = "TXT_NAME_PAD"; Text = "      " },
+        [PSCustomObject]@{ Name = "TXT_NAME_PAD"; Text = "       " },
         [PSCustomObject]@{ Name = "TXT_SCORE_PAD"; Text = "     " },
         [PSCustomObject]@{ Name = "TXT_KEY_UNKNOWN"; Text = "KEY" },
         [PSCustomObject]@{ Name = "TXT_KEY_O"; Text = "O" },
@@ -918,22 +918,24 @@ function New-HighScoreSector {
     $bytes[1] = [byte][char]'S'
     $bytes[2] = [byte][char]'0'
     $bytes[3] = [byte][char]'7'
-    $bytes[4] = 1
+    $bytes[4] = 2
     $bytes[5] = 5
+    $nameLength = 7
+    $scoreLength = 5
 
     $entries = @(
         [PSCustomObject]@{ Name = "MARIJA"; Score = "05000" },
-        [PSCustomObject]@{ Name = "NIKOLA"; Score = "00870" },
-        [PSCustomObject]@{ Name = "ELENA";  Score = "00640" },
-        [PSCustomObject]@{ Name = "GORAN";  Score = "00420" },
-        [PSCustomObject]@{ Name = "IVA";    Score = "00250" }
+        [PSCustomObject]@{ Name = "MEGLENA"; Score = "00870" },
+        [PSCustomObject]@{ Name = "MAKSIM";  Score = "00640" },
+        [PSCustomObject]@{ Name = "BOJANA";  Score = "00420" },
+        [PSCustomObject]@{ Name = "BORO";    Score = "00250" }
     )
 
     $entryOffset = 8
     foreach ($entry in $entries) {
-        Set-AsciiField $bytes $entryOffset 6 $entry.Name
-        Set-AsciiField $bytes ($entryOffset + 6) 5 $entry.Score
-        $entryOffset += 11
+        Set-AsciiField $bytes $entryOffset $nameLength $entry.Name
+        Set-AsciiField $bytes ($entryOffset + $nameLength) $scoreLength $entry.Score
+        $entryOffset += $nameLength + $scoreLength
     }
 
     $checksum = 0

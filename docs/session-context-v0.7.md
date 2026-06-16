@@ -27,16 +27,18 @@ RUN"TETRIS.BIN"
 - The HUD is compact and left-aligned with a 5-digit score.
 - Gameplay pieces use a shuffled 7-piece bag seeded from player timing, so
   fresh games no longer use the same deterministic piece order.
+- Loader, splash, menu, gameplay, and game-over/high-score screens use a black
+  background and black hardware border in normal operation.
 - Do not push experimental iterations unless the user explicitly asks.
 
 ## Current Build Metrics
 
 - Boot loader load/run: `0x0800`
-- Boot loader size: 851 bytes
+- Boot loader size: 909 bytes
 - Resident payload load: `0x1000`
-- Resident payload run: `0x31DA`
-- Resident payload highest address: `0x3E96`
-- Resident payload bytes: 11927
+- Resident payload run: `0x31BA`
+- Resident payload highest address: `0x3E7B`
+- Resident payload bytes: 11900
 - Resident payload sectors: 24
 - Resident payload tracks: 20-22
 - Gameplay screen overlay: `0xC000`, 16384 bytes, 32 sectors, tracks 23-26
@@ -50,15 +52,15 @@ RUN"TETRIS.BIN"
 
 - RAM buffer: `0x4E00`
 - Magic: `HS07`
-- Version byte: `1`
+- Version byte: `2`
 - Entry count: `5`
-- Entry format: 6-byte uppercase name + 5-byte ASCII score
+- Entry format: 7-byte uppercase name + 5-byte ASCII score
 - Default table:
   - `MARIJA 05000`
-  - `NIKOLA 00870`
-  - `ELENA 00640`
-  - `GORAN 00420`
-  - `IVA 00250`
+  - `MEGLENA 00870`
+  - `MAKSIM 00640`
+  - `BOJANA 00420`
+  - `BORO 00250`
 - Save failures are non-fatal. If save behavior regresses, inspect the
   `fdc_write_current_sector` timing loop in `tools\runtime_overlay_loader.s`.
 - ULIfAC write behavior is documented in

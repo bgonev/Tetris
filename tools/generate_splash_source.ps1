@@ -158,10 +158,10 @@ function Draw-BoardTile {
 }
 
 Fill-Rect 0 0 $width $height $black
-Fill-Rect 0 0 $width 4 $blue
-Fill-Rect 0 196 $width 4 $blue
-Fill-Rect 0 0 4 $height $blue
-Fill-Rect 316 0 4 $height $blue
+Fill-Rect 0 0 $width 4 $black
+Fill-Rect 0 196 $width 4 $black
+Fill-Rect 0 0 4 $height $black
+Fill-Rect 316 0 4 $height $black
 
 Draw-BlockText "TETRIS" 37 8 7 @($cyan, $yellow, $blue, $orange, $green, $red)
 Draw-SmallText "Made by Bgonev, 2026" 82 60 2 $grey
